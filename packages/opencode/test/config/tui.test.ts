@@ -80,6 +80,62 @@ test("migrates tui-specific keys from opencode.json when tui.json does not exist
   })
 })
 
+test("merges legacy tui keys from opencode.jsonc and opencode.json before migrating", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "opencode.jsonc"),
+        `{
+  "theme": "from-jsonc",
+  "tui": { "scroll_speed": 2 },
+  "keybinds": { "app_exit": "ctrl+q" }
+}`,
+      )
+      await Bun.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify(
+          {
+            theme: "from-json",
+            keybinds: { theme_list: "ctrl+k" },
+          },
+          null,
+          2,
+        ),
+      )
+    },
+  })
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await TuiConfig.get()
+      expect(config.theme).toBe("from-json")
+      expect(config.scroll_speed).toBe(2)
+      expect(config.keybinds?.app_exit).toBe("ctrl+q")
+      expect(config.keybinds?.theme_list).toBe("ctrl+k")
+
+      const text = await Filesystem.readText(path.join(tmp.path, "tui.json"))
+      expect(JSON.parse(text)).toMatchObject({
+        theme: "from-json",
+        scroll_speed: 2,
+        keybinds: { app_exit: "ctrl+q", theme_list: "ctrl+k" },
+      })
+
+      const json = JSON.parse(await Filesystem.readText(path.join(tmp.path, "opencode.json")))
+      expect(json.theme).toBeUndefined()
+      expect(json.keybinds).toBeUndefined()
+
+      const jsonc = await Filesystem.readText(path.join(tmp.path, "opencode.jsonc"))
+      expect(jsonc).not.toContain('"theme"')
+      expect(jsonc).not.toContain('"keybinds"')
+      expect(jsonc).not.toContain('"tui"')
+
+      expect(await Filesystem.exists(path.join(tmp.path, "opencode.json.tui-migration.bak"))).toBe(true)
+      expect(await Filesystem.exists(path.join(tmp.path, "opencode.jsonc.tui-migration.bak"))).toBe(true)
+    },
+  })
+})
+
 test("migrates project legacy tui keys even when global tui.json already exists", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
