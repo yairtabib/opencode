@@ -10,6 +10,7 @@ import {
   useCommand,
 } from "@opencode-ai/app"
 import { Splash } from "@opencode-ai/ui/logo"
+import * as Sentry from "@sentry/solid"
 import type { AsyncStorage } from "@solid-primitives/storage"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import { readImage } from "@tauri-apps/plugin-clipboard-manager"
@@ -37,6 +38,19 @@ import { createMenu } from "./menu"
 const root = document.getElementById("root")
 if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
   throw new Error(t("error.dev.rootNotFound"))
+}
+
+if (!import.meta.env.DEV && import.meta.env.VITE_SENTRY_DSN) {
+  Sentry.init({
+    dsn: import.meta.env.VITE_SENTRY_DSN,
+    environment: import.meta.env.VITE_SENTRY_ENVIRONMENT ?? import.meta.env.MODE,
+    release: import.meta.env.VITE_SENTRY_RELEASE ?? `desktop@${pkg.version}`,
+    initialScope: {
+      tags: {
+        platform: "desktop",
+      },
+    },
+  })
 }
 
 void initI18n()

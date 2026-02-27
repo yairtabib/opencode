@@ -1,6 +1,7 @@
 // @refresh reload
 
 import { iife } from "@opencode-ai/util/iife"
+import * as Sentry from "@sentry/solid"
 import { render } from "solid-js/web"
 import { AppBaseProviders, AppInterface } from "@/app"
 import { type Platform, PlatformProvider } from "@/context/platform"
@@ -96,6 +97,19 @@ const restart: Platform["restart"] = async () => {
 const root = document.getElementById("root")
 if (!(root instanceof HTMLElement) && import.meta.env.DEV) {
   throw new Error(getRootNotFoundError())
+}
+
+if (!import.meta.env.DEV && import.meta.env.VITE_SENTRY_DSN) {
+  Sentry.init({
+    dsn: import.meta.env.VITE_SENTRY_DSN,
+    environment: import.meta.env.VITE_SENTRY_ENVIRONMENT ?? import.meta.env.MODE,
+    release: import.meta.env.VITE_SENTRY_RELEASE ?? `web@${pkg.version}`,
+    initialScope: {
+      tags: {
+        platform: "web",
+      },
+    },
+  })
 }
 
 const platform: Platform = {

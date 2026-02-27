@@ -1,4 +1,5 @@
 import "@/index.css"
+import * as Sentry from "@sentry/solid"
 import { Code } from "@opencode-ai/ui/code"
 import { I18nProvider } from "@opencode-ai/ui/context"
 import { CodeComponentProvider } from "@opencode-ai/ui/context/code"
@@ -119,7 +120,12 @@ export function AppBaseProviders(props: ParentProps) {
       <ThemeProvider>
         <LanguageProvider>
           <UiI18nBridge>
-            <ErrorBoundary fallback={(error) => <ErrorPage error={error} />}>
+            <ErrorBoundary
+              fallback={(error) => {
+                Sentry.captureException(error)
+                return <ErrorPage error={error} />
+              }}
+            >
               <DialogProvider>
                 <MarkedProviderWithNativeParser>
                   <DiffComponentProvider component={Diff}>
