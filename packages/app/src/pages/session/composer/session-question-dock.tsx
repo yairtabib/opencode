@@ -233,6 +233,12 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
     setStore("editing", false)
   }
 
+  const jump = (tab: number) => {
+    if (store.sending) return
+    setStore("tab", tab)
+    setStore("editing", false)
+  }
+
   return (
     <DockPrompt
       kind="question"
@@ -252,7 +258,32 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
           }}
         >
           <div data-slot="question-header-title">{summary()}</div>
-          <div class="ml-auto">
+          <div data-slot="question-progress" class="ml-auto">
+            <For each={questions()}>
+              {(_, i) => (
+                <button
+                  type="button"
+                  data-slot="question-progress-segment"
+                  data-active={i() === store.tab}
+                  data-answered={
+                    (store.answers[i()]?.length ?? 0) > 0 ||
+                    (store.customOn[i()] === true && (store.custom[i()] ?? "").trim().length > 0)
+                  }
+                  disabled={store.sending}
+                  onMouseDown={(event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                  }}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    jump(i())
+                  }}
+                  aria-label={`${language.t("ui.tool.questions")} ${i() + 1}`}
+                />
+              )}
+            </For>
+          </div>
+          <div>
             <IconButton
               data-action="session-question-toggle-button"
               icon="chevron-down"
