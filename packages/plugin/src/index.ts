@@ -18,6 +18,7 @@ import type { BunShell } from "./shell"
 import { type ToolDefinition } from "./tool"
 
 export * from "./tool"
+export { getTuiJSXRuntime, setTuiJSXRuntime, type TuiJSXRuntime } from "./jsx"
 export type { CliRenderer, SlotMode } from "@opentui/core"
 
 export type ProviderContext = {
