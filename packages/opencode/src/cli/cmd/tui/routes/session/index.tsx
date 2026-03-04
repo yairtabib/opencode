@@ -1967,11 +1967,7 @@ function Task(props: ToolProps<typeof TaskTool>) {
     return !!msgs().findLast((msg) => msg.role === "assistant")?.error
   })
   const isRunning = createMemo(() => props.part.state.status === "running" || childRunning())
-  const toolLabel = createMemo(() => {
-    const total = counts().all
-    if (!childRunning()) return `${total} toolcalls`
-    return `${counts().done}/${total} toolcalls`
-  })
+  const toolLabel = createMemo(() => `${childRunning() ? counts().done : counts().all} toolcalls`)
 
   return (
     <Switch>
@@ -1989,9 +1985,6 @@ function Task(props: ToolProps<typeof TaskTool>) {
           <box>
             <text style={{ fg: theme.textMuted }}>
               {props.input.description} ({toolLabel()})
-              <Show when={background()}>
-                <span> · background</span>
-              </Show>
             </text>
             <Show when={background()}>
               <text style={{ fg: failed() ? theme.error : backgroundRunning() ? theme.warning : theme.textMuted }}>

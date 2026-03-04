@@ -6,6 +6,7 @@ import { MessageV2 } from "../session/message-v2"
 import { Identifier } from "../id/id"
 import { Agent } from "../agent/agent"
 import { SessionPrompt } from "../session/prompt"
+import { SessionStatus } from "../session/status"
 import { iife } from "@/util/iife"
 import { defer } from "@/util/defer"
 import { Config } from "../config/config"
@@ -66,6 +67,47 @@ function backgroundMessage(input: {
 function errorText(error: unknown) {
   if (error instanceof Error) return error.message
   return String(error)
+}
+
+function resultTaskID(input: unknown) {
+  if (!input || typeof input !== "object") return
+  const taskID = Reflect.get(input, "task_id")
+  if (typeof taskID === "string") return taskID
+}
+
+function polled(input: { message: MessageV2.WithParts; taskID: string }) {
+  if (input.message.info.role !== "assistant") return false
+  return input.message.parts.some((part) => {
+    if (part.type !== "tool") return false
+    if (part.tool !== "task_status") return false
+    if (part.state.status !== "completed") return false
+    return resultTaskID(part.state.input) === input.taskID
+  })
+}
+
+async function latestUser(sessionID: string) {
+  const [message] = await Session.messages({
+    sessionID,
+    limit: 1,
+  })
+  if (!message) return
+  if (message.info.role !== "user") return
+  return message.info.id
+}
+
+async function continueParent(input: { parentID: string; userID: string; taskID: string }) {
+  const message =
+    SessionStatus.get(input.parentID).type === "idle"
+      ? undefined
+      : await SessionPrompt.loop({
+          sessionID: input.parentID,
+        }).catch(() => undefined)
+  if (message && polled({ message, taskID: input.taskID })) return
+  if (SessionStatus.get(input.parentID).type !== "idle") return
+  if ((await latestUser(input.parentID)) !== input.userID) return
+  await SessionPrompt.loop({
+    sessionID: input.parentID,
+  })
 }
 
 export const TaskTool = Tool.define("task", async (ctx) => {
@@ -210,12 +252,28 @@ export const TaskTool = Tool.define("task", async (ctx) => {
           })
 
         void run()
-          .then((text) => {
-            void inject("completed", text).catch(() => {})
-          })
-          .catch((error) => {
-            void inject("error", errorText(error)).catch(() => {})
-          })
+          .then((text) =>
+            inject("completed", text)
+              .then((message) =>
+                continueParent({
+                  parentID: ctx.sessionID,
+                  userID: message.info.id,
+                  taskID: session.id,
+                }),
+              )
+              .catch(() => {}),
+          )
+          .catch((error) =>
+            inject("error", errorText(error))
+              .then((message) =>
+                continueParent({
+                  parentID: ctx.sessionID,
+                  userID: message.info.id,
+                  taskID: session.id,
+                }),
+              )
+              .catch(() => {}),
+          )
 
         return {
           title: params.description,
