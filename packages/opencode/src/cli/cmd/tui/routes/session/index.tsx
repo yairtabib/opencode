@@ -1172,7 +1172,7 @@ export function Session() {
                 }}
                 sessionID={route.sessionID}
               />
-              {TuiPlugin.Slot({ name: "session_footer", session_id: route.sessionID }) as never}
+              {TuiPlugin.Slot({ name: "session_footer", session_id: route.sessionID })}
             </box>
           </Show>
           <Toast />
