@@ -12,14 +12,14 @@ import type {
   Config as SDKConfig,
 } from "@opencode-ai/sdk"
 import type { createOpencodeClient as createOpencodeClientV2, Event as TuiEvent } from "@opencode-ai/sdk/v2"
-import type { CliRenderer, Plugin as SlotPlugin } from "@opentui/core"
+import type { CliRenderer } from "@opentui/core"
 
 import type { BunShell } from "./shell"
 import { type ToolDefinition } from "./tool"
 
 export * from "./tool"
 export { getTuiJSXRuntime, setTuiJSXRuntime, type TuiJSXRuntime } from "./jsx"
-export type { CliRenderer, SlotMode } from "@opentui/core"
+export type { CliRenderer } from "@opentui/core"
 
 export type ProviderContext = {
   source: "env" | "config" | "custom" | "api"
@@ -57,6 +57,20 @@ export type ThemeJson = {
     selectedListItemText?: ThemeColorValue
     backgroundMenu?: ThemeColorValue
     thinkingOpacity?: number
+  }
+}
+
+export type SlotMode = "append" | "replace" | "single_winner"
+
+type SlotRenderer<Node, Props, Context extends object = object> = (ctx: Readonly<Context>, props: Props) => Node
+
+type SlotPlugin<Node, Slots extends object, Context extends object = object> = {
+  id: string
+  order?: number
+  setup?: (ctx: Readonly<Context>, renderer: CliRenderer) => void
+  dispose?: () => void
+  slots: {
+    [K in keyof Slots]?: SlotRenderer<Node, Slots[K], Context>
   }
 }
 
