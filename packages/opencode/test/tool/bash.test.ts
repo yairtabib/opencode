@@ -21,6 +21,7 @@ const ctx = {
 }
 
 const projectRoot = path.join(__dirname, "../..")
+const win = process.env.WINDIR?.replaceAll("\\", "/")
 const bin = process.execPath.replaceAll("\\", "/")
 const file = path.join(projectRoot, "test/tool/fixtures/output.ts").replaceAll("\\", "/")
 const kind = () => path.win32.basename(process.env.SHELL || "", ".exe").toLowerCase()
@@ -46,26 +47,49 @@ const shells = (() => {
 
   return list.filter((item, i) => list.findIndex((x) => x.shell.toLowerCase() === item.shell.toLowerCase()) === i)
 })()
+const ps = shells.filter((item) => ["pwsh", "powershell"].includes(item.label))
+const forms = (dir: string) => {
+  if (process.platform !== "win32") return [dir]
+  const full = Filesystem.normalizePath(dir)
+  const slash = full.replaceAll("\\", "/")
+  const root = slash.replace(/^[A-Za-z]:/, "")
+  return Array.from(new Set([full, slash, root, root.toLowerCase()]))
+}
 
-const withShell = (shell: string, fn: () => Promise<void>) => async () => {
-  const prev = process.env.SHELL
-  process.env.SHELL = shell
-  Shell.acceptable.reset()
-  Shell.preferred.reset()
-  try {
-    await fn()
-  } finally {
-    if (prev === undefined) delete process.env.SHELL
-    else process.env.SHELL = prev
+const withShell =
+  (item: { label: string; shell: string }, fn: (item: { label: string; shell: string }) => Promise<void>) =>
+  async () => {
+    const prev = process.env.SHELL
+    process.env.SHELL = item.shell
     Shell.acceptable.reset()
     Shell.preferred.reset()
+    try {
+      await fn(item)
+    } finally {
+      if (prev === undefined) delete process.env.SHELL
+      else process.env.SHELL = prev
+      Shell.acceptable.reset()
+      Shell.preferred.reset()
+    }
+  }
+
+const each = (name: string, fn: (item: { label: string; shell: string }) => Promise<void>) => {
+  for (const item of shells) {
+    test(`${name} [${item.label}]`, withShell(item, fn))
   }
 }
 
-const each = (name: string, fn: () => Promise<void>) => {
-  for (const item of shells) {
-    test(`${name} [${item.label}]`, withShell(item.shell, fn))
-  }
+const mustTruncate = (result: { metadata: any; output: string }, item: { label: string; shell: string }) => {
+  if (result.metadata.truncated) return
+  throw new Error(
+    [
+      `shell: ${item.label}`,
+      `path: ${item.shell}`,
+      `exit: ${String(result.metadata.exit)}`,
+      "output:",
+      result.output,
+    ].join("\n"),
+  )
 }
 
 describe("tool.bash", () => {
@@ -144,6 +168,76 @@ describe("tool.bash permissions", () => {
     })
   })
 
+  for (const item of ps) {
+    test(
+      `parses PowerShell conditionals for permission prompts [${item.label}]`,
+      withShell(item, async () => {
+        await Instance.provide({
+          directory: projectRoot,
+          fn: async () => {
+            const bash = await BashTool.init()
+            const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
+            const testCtx = {
+              ...ctx,
+              ask: async (req: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">) => {
+                requests.push(req)
+              },
+            }
+            await bash.execute(
+              {
+                command: "Write-Host foo; if ($?) { Write-Host bar }",
+                description: "Check PowerShell conditional",
+              },
+              testCtx,
+            )
+            const bashReq = requests.find((r) => r.permission === "bash")
+            expect(bashReq).toBeDefined()
+            expect(bashReq!.patterns).toContain("Write-Host foo")
+            expect(bashReq!.patterns).toContain("Write-Host bar")
+            expect(bashReq!.patterns).not.toContain("0")
+            expect(bashReq!.always).toContain("Write-Host *")
+            expect(bashReq!.always).not.toContain("0 *")
+          },
+        })
+      }),
+    )
+  }
+
+  if (win) {
+    for (const item of ps) {
+      test(
+        `asks for external_directory permission for PowerShell file args [${item.label}]`,
+        withShell(item, async () => {
+          await Instance.provide({
+            directory: projectRoot,
+            fn: async () => {
+              const bash = await BashTool.init()
+              const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
+              const testCtx = {
+                ...ctx,
+                ask: async (req: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">) => {
+                  requests.push(req)
+                },
+              }
+              await bash.execute(
+                {
+                  command: `cat ${win}/win.ini`,
+                  description: "Read Windows ini",
+                },
+                testCtx,
+              )
+              const extDirReq = requests.find((r) => r.permission === "external_directory")
+              expect(extDirReq).toBeDefined()
+              expect(extDirReq!.patterns).toContain(
+                Filesystem.normalizePathPattern(path.join(process.env.WINDIR!, "*")),
+              )
+            },
+          })
+        }),
+      )
+    }
+  }
+
   each("asks for external_directory permission when cd to parent", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
@@ -185,9 +279,9 @@ describe("tool.bash permissions", () => {
         }
         await bash.execute(
           {
-            command: "ls",
+            command: "echo ok",
             workdir: os.tmpdir(),
-            description: "List temp dir",
+            description: "Echo from temp dir",
           },
           testCtx,
         )
@@ -197,6 +291,52 @@ describe("tool.bash permissions", () => {
       },
     })
   })
+
+  if (process.platform === "win32") {
+    for (const item of shells) {
+      test(
+        `normalizes external_directory workdir variants on Windows [${item.label}]`,
+        withShell(item, async () => {
+          await using outerTmp = await tmpdir()
+          await using tmp = await tmpdir({ git: true })
+          await Instance.provide({
+            directory: tmp.path,
+            fn: async () => {
+              const bash = await BashTool.init()
+              const want = Filesystem.normalizePathPattern(path.join(outerTmp.path, "*"))
+
+              for (const dir of forms(outerTmp.path)) {
+                const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
+                const testCtx = {
+                  ...ctx,
+                  ask: async (req: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">) => {
+                    requests.push(req)
+                  },
+                }
+
+                await bash.execute(
+                  {
+                    command: "echo ok",
+                    workdir: dir,
+                    description: "Echo from external dir",
+                  },
+                  testCtx,
+                )
+
+                const extDirReq = requests.find((r) => r.permission === "external_directory")
+                expect({ dir, patterns: extDirReq?.patterns, always: extDirReq?.always }).toEqual({
+                  dir,
+                  patterns: [want],
+                  always: [want],
+                })
+              }
+            },
+          })
+        }),
+        { timeout: 20000 },
+      )
+    }
+  }
 
   each("asks for external_directory permission when file arg is outside project", async () => {
     await using outerTmp = await tmpdir({
@@ -329,13 +469,10 @@ describe("tool.bash permissions", () => {
             requests.push(req)
           },
         }
-        const command = ["pwsh", "powershell"].includes(kind())
-          ? "Write-Output test > output.txt"
-          : "cat > /tmp/output.txt"
-        await bash.execute({ command, description: "Redirect ls output" }, testCtx)
+        await bash.execute({ command: "echo test > output.txt", description: "Redirect test output" }, testCtx)
         const bashReq = requests.find((r) => r.permission === "bash")
         expect(bashReq).toBeDefined()
-        expect(bashReq!.patterns).toContain(command)
+        expect(bashReq!.patterns).toContain("echo test > output.txt")
       },
     })
   })
@@ -364,7 +501,7 @@ describe("tool.bash permissions", () => {
 })
 
 describe("tool.bash truncation", () => {
-  each("truncates output exceeding line limit", async () => {
+  each("truncates output exceeding line limit", async (item) => {
     await Instance.provide({
       directory: projectRoot,
       fn: async () => {
@@ -377,14 +514,14 @@ describe("tool.bash truncation", () => {
           },
           ctx,
         )
-        expect((result.metadata as any).truncated).toBe(true)
+        mustTruncate(result, item)
         expect(result.output).toContain("truncated")
         expect(result.output).toContain("The tool call succeeded but the output was truncated")
       },
     })
   })
 
-  each("truncates output exceeding byte limit", async () => {
+  each("truncates output exceeding byte limit", async (item) => {
     await Instance.provide({
       directory: projectRoot,
       fn: async () => {
@@ -397,7 +534,7 @@ describe("tool.bash truncation", () => {
           },
           ctx,
         )
-        expect((result.metadata as any).truncated).toBe(true)
+        mustTruncate(result, item)
         expect(result.output).toContain("truncated")
         expect(result.output).toContain("The tool call succeeded but the output was truncated")
       },
@@ -422,7 +559,7 @@ describe("tool.bash truncation", () => {
     })
   })
 
-  each("full output is saved to file when truncated", async () => {
+  each("full output is saved to file when truncated", async (item) => {
     await Instance.provide({
       directory: projectRoot,
       fn: async () => {
@@ -435,7 +572,7 @@ describe("tool.bash truncation", () => {
           },
           ctx,
         )
-        expect((result.metadata as any).truncated).toBe(true)
+        mustTruncate(result, item)
 
         const filepath = (result.metadata as any).outputPath
         expect(filepath).toBeTruthy()

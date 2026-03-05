@@ -6,7 +6,7 @@ import DESCRIPTION from "./bash.txt"
 import { Log } from "../util/log"
 import { Instance } from "../project/instance"
 import { lazy } from "@/util/lazy"
-import { Language } from "web-tree-sitter"
+import { Language, type Node } from "web-tree-sitter"
 
 import { $ } from "bun"
 import { Filesystem } from "@/util/filesystem"
@@ -20,6 +20,7 @@ import { Plugin } from "@/plugin"
 
 const MAX_METADATA_LENGTH = 30_000
 const DEFAULT_TIMEOUT = Flag.OPENCODE_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS || 2 * 60 * 1000
+const PS = new Set(["powershell", "pwsh"])
 
 export const log = Log.create({ service: "bash-tool" })
 
@@ -28,6 +29,34 @@ const resolveWasm = (asset: string) => {
   if (asset.startsWith("/") || /^[a-z]:/i.test(asset)) return asset
   const url = new URL(asset, import.meta.url)
   return fileURLToPath(url)
+}
+
+function parts(node: Node) {
+  const out = []
+  for (let i = 0; i < node.childCount; i++) {
+    const child = node.child(i)
+    if (!child) continue
+    if (child.type === "command_elements") {
+      for (let j = 0; j < child.childCount; j++) {
+        const item = child.child(j)
+        if (!item || item.type === "command_argument_sep" || item.type === "redirection") continue
+        out.push(item.text)
+      }
+      continue
+    }
+    if (
+      child.type !== "command_name" &&
+      child.type !== "command_name_expr" &&
+      child.type !== "word" &&
+      child.type !== "string" &&
+      child.type !== "raw_string" &&
+      child.type !== "concatenation"
+    ) {
+      continue
+    }
+    out.push(child.text)
+  }
+  return out
 }
 
 const parser = lazy(async () => {
@@ -44,19 +73,26 @@ const parser = lazy(async () => {
   const { default: bashWasm } = await import("tree-sitter-bash/tree-sitter-bash.wasm" as string, {
     with: { type: "wasm" },
   })
+  const { default: psWasm } = await import("tree-sitter-powershell/tree-sitter-powershell.wasm" as string, {
+    with: { type: "wasm" },
+  })
   const bashPath = resolveWasm(bashWasm)
-  const bashLanguage = await Language.load(bashPath)
-  const p = new Parser()
-  p.setLanguage(bashLanguage)
-  return p
+  const psPath = resolveWasm(psWasm)
+  const [bashLanguage, psLanguage] = await Promise.all([Language.load(bashPath), Language.load(psPath)])
+  const bash = new Parser()
+  bash.setLanguage(bashLanguage)
+  const ps = new Parser()
+  ps.setLanguage(psLanguage)
+  return { bash, ps }
 })
 
 // TODO: we may wanna rename this tool so it works better on other shells
 export const BashTool = Tool.define("bash", async () => {
   const shell = Shell.acceptable()
   const name = process.platform === "win32" ? path.win32.basename(shell, ".exe") : path.basename(shell)
+  const lower = name.toLowerCase()
   const chain =
-    name.toLowerCase() === "powershell"
+    lower === "powershell"
       ? "If the commands depend on each other and must run sequentially, avoid '&&' in this shell because Windows PowerShell 5.1 does not support it. Use PowerShell conditionals such as `cmd1; if ($?) { cmd2 }` when later commands must depend on earlier success."
       : "If the commands depend on each other and must run sequentially, use a single Bash call with '&&' to chain them together (e.g., `git add . && git commit -m \"message\" && git push`). For instance, if one operation must complete before another starts (like mkdir before cp, Write before Bash for git operations, or git add before git commit), run these operations sequentially instead."
   log.info("bash tool using shell", { shell })
@@ -84,12 +120,15 @@ export const BashTool = Tool.define("bash", async () => {
         ),
     }),
     async execute(params, ctx) {
-      const cwd = params.workdir || Instance.directory
+      const cwd =
+        process.platform === "win32" && path.isAbsolute(params.workdir || Instance.directory)
+          ? Filesystem.normalizePath(params.workdir || Instance.directory)
+          : params.workdir || Instance.directory
       if (params.timeout !== undefined && params.timeout < 0) {
         throw new Error(`Invalid timeout value: ${params.timeout}. Timeout must be a positive number.`)
       }
       const timeout = params.timeout ?? DEFAULT_TIMEOUT
-      const tree = await parser().then((p) => p.parse(params.command))
+      const tree = await parser().then((p) => (PS.has(lower) ? p.ps : p.bash).parse(params.command))
       if (!tree) {
         throw new Error("Failed to parse command")
       }
@@ -103,22 +142,9 @@ export const BashTool = Tool.define("bash", async () => {
 
         // Get full command text including redirects if present
         let commandText = node.parent?.type === "redirected_statement" ? node.parent.text : node.text
+        commandText = commandText.trim()
 
-        const command = []
-        for (let i = 0; i < node.childCount; i++) {
-          const child = node.child(i)
-          if (!child) continue
-          if (
-            child.type !== "command_name" &&
-            child.type !== "word" &&
-            child.type !== "string" &&
-            child.type !== "raw_string" &&
-            child.type !== "concatenation"
-          ) {
-            continue
-          }
-          command.push(child.text)
-        }
+        const command = parts(node)
 
         // not an exhaustive list, but covers most common cases
         if (["cd", "rm", "cp", "mv", "mkdir", "touch", "chmod", "chown", "cat"].includes(command[0])) {
@@ -132,8 +158,7 @@ export const BashTool = Tool.define("bash", async () => {
               .then((x) => x.trim())
             log.info("resolved path", { arg, resolved })
             if (resolved) {
-              const normalized =
-                process.platform === "win32" ? Filesystem.windowsPath(resolved).replace(/\//g, "\\") : resolved
+              const normalized = process.platform === "win32" ? Filesystem.normalizePath(resolved) : resolved
               if (!Instance.containsPath(normalized)) {
                 const dir = (await Filesystem.isDir(normalized)) ? normalized : path.dirname(normalized)
                 directories.add(dir)
@@ -151,6 +176,7 @@ export const BashTool = Tool.define("bash", async () => {
 
       if (directories.size > 0) {
         const globs = Array.from(directories).map((dir) => {
+          if (process.platform === "win32") return Filesystem.normalizePathPattern(path.join(dir, "*"))
           // Preserve POSIX-looking paths with /s, even on Windows
           if (dir.startsWith("/")) return `${dir.replace(/[\\/]+$/, "")}/*`
           return path.join(dir, "*")
