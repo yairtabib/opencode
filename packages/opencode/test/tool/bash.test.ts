@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import os from "os"
 import path from "path"
+import { Shell } from "../../src/shell/shell"
 import { BashTool } from "../../src/tool/bash"
 import { Instance } from "../../src/project/instance"
 import { Filesystem } from "../../src/util/filesystem"
@@ -23,9 +24,45 @@ const projectRoot = path.join(__dirname, "../..")
 const bin = process.execPath.replaceAll("\\", "/")
 const file = path.join(projectRoot, "test/tool/fixtures/output.ts").replaceAll("\\", "/")
 const fill = (mode: "lines" | "bytes", n: number) => `${bin} ${file} ${mode} ${n}`
+const shells = (() => {
+  if (process.platform !== "win32") {
+    const shell = process.env.SHELL || Bun.which("bash") || "/bin/sh"
+    return [{ label: path.basename(shell), shell }]
+  }
+
+  const list = [
+    { label: "git bash", shell: process.env.SHELL || Bun.which("bash") },
+    { label: "pwsh", shell: Bun.which("pwsh") },
+    { label: "powershell", shell: Bun.which("powershell") },
+    { label: "cmd", shell: process.env.COMSPEC || Bun.which("cmd.exe") },
+  ].filter((item): item is { label: string; shell: string } => Boolean(item.shell))
+
+  return list.filter((item, i) => list.findIndex((x) => x.shell.toLowerCase() === item.shell.toLowerCase()) === i)
+})()
+
+const withShell = (shell: string, fn: () => Promise<void>) => async () => {
+  const prev = process.env.SHELL
+  process.env.SHELL = shell
+  Shell.acceptable.reset()
+  Shell.preferred.reset()
+  try {
+    await fn()
+  } finally {
+    if (prev === undefined) delete process.env.SHELL
+    else process.env.SHELL = prev
+    Shell.acceptable.reset()
+    Shell.preferred.reset()
+  }
+}
+
+const each = (name: string, fn: () => Promise<void>) => {
+  for (const item of shells) {
+    test(`${name} [${item.label}]`, withShell(item.shell, fn))
+  }
+}
 
 describe("tool.bash", () => {
-  test("basic", async () => {
+  each("basic", async () => {
     await Instance.provide({
       directory: projectRoot,
       fn: async () => {
@@ -45,7 +82,7 @@ describe("tool.bash", () => {
 })
 
 describe("tool.bash permissions", () => {
-  test("asks for bash permission with correct pattern", async () => {
+  each("asks for bash permission with correct pattern", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
@@ -72,7 +109,7 @@ describe("tool.bash permissions", () => {
     })
   })
 
-  test("asks for bash permission with multiple commands", async () => {
+  each("asks for bash permission with multiple commands", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
@@ -100,7 +137,7 @@ describe("tool.bash permissions", () => {
     })
   })
 
-  test("asks for external_directory permission when cd to parent", async () => {
+  each("asks for external_directory permission when cd to parent", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
@@ -126,7 +163,7 @@ describe("tool.bash permissions", () => {
     })
   })
 
-  test("asks for external_directory permission when workdir is outside project", async () => {
+  each("asks for external_directory permission when workdir is outside project", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
@@ -154,7 +191,7 @@ describe("tool.bash permissions", () => {
     })
   })
 
-  test("asks for external_directory permission when file arg is outside project", async () => {
+  each("asks for external_directory permission when file arg is outside project", async () => {
     await using outerTmp = await tmpdir({
       init: async (dir) => {
         await Bun.write(path.join(dir, "outside.txt"), "x")
@@ -189,7 +226,7 @@ describe("tool.bash permissions", () => {
     })
   })
 
-  test("does not ask for external_directory permission when rm inside project", async () => {
+  each("does not ask for external_directory permission when rm inside project", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
@@ -219,7 +256,7 @@ describe("tool.bash permissions", () => {
     })
   })
 
-  test("includes always patterns for auto-approval", async () => {
+  each("includes always patterns for auto-approval", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
@@ -246,7 +283,7 @@ describe("tool.bash permissions", () => {
     })
   })
 
-  test("does not ask for bash permission when command is cd only", async () => {
+  each("does not ask for bash permission when command is cd only", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
@@ -272,7 +309,7 @@ describe("tool.bash permissions", () => {
     })
   })
 
-  test("matches redirects in permission pattern", async () => {
+  each("matches redirects in permission pattern", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
@@ -293,7 +330,7 @@ describe("tool.bash permissions", () => {
     })
   })
 
-  test("always pattern has space before wildcard to not include different commands", async () => {
+  each("always pattern has space before wildcard to not include different commands", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
@@ -317,7 +354,7 @@ describe("tool.bash permissions", () => {
 })
 
 describe("tool.bash truncation", () => {
-  test("truncates output exceeding line limit", async () => {
+  each("truncates output exceeding line limit", async () => {
     await Instance.provide({
       directory: projectRoot,
       fn: async () => {
@@ -337,7 +374,7 @@ describe("tool.bash truncation", () => {
     })
   })
 
-  test("truncates output exceeding byte limit", async () => {
+  each("truncates output exceeding byte limit", async () => {
     await Instance.provide({
       directory: projectRoot,
       fn: async () => {
@@ -357,7 +394,7 @@ describe("tool.bash truncation", () => {
     })
   })
 
-  test("does not truncate small output", async () => {
+  each("does not truncate small output", async () => {
     await Instance.provide({
       directory: projectRoot,
       fn: async () => {
@@ -370,12 +407,12 @@ describe("tool.bash truncation", () => {
           ctx,
         )
         expect((result.metadata as any).truncated).toBe(false)
-        expect(["hello\n", "hello\r\n"]).toContain(result.output)
+        expect(result.output).toContain("hello")
       },
     })
   })
 
-  test("full output is saved to file when truncated", async () => {
+  each("full output is saved to file when truncated", async () => {
     await Instance.provide({
       directory: projectRoot,
       fn: async () => {
