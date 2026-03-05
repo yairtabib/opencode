@@ -21,7 +21,8 @@ const ctx = {
 
 const projectRoot = path.join(__dirname, "../..")
 const bin = process.execPath.replaceAll("\\", "/")
-const fill = (mode: "lines" | "bytes", n: number) => `${bin} test/tool/fixtures/output.ts ${mode} ${n}`
+const file = path.join(projectRoot, "test/tool/fixtures/output.ts").replaceAll("\\", "/")
+const fill = (mode: "lines" | "bytes", n: number) => `${bin} ${file} ${mode} ${n}`
 
 describe("tool.bash", () => {
   test("basic", async () => {
