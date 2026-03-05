@@ -36,11 +36,6 @@ export namespace Shell {
   }
   const BLACKLIST = new Set(["fish", "nu"])
 
-  function base(file: string) {
-    if (process.platform === "win32") return path.win32.basename(file, ".exe")
-    return path.basename(file)
-  }
-
   function fallback() {
     if (process.platform === "win32") {
       if (Flag.OPENCODE_GIT_BASH_PATH) return Flag.OPENCODE_GIT_BASH_PATH
@@ -71,7 +66,7 @@ export namespace Shell {
 
   export const acceptable = lazy(() => {
     const s = process.env.SHELL
-    if (s && !BLACKLIST.has(base(s))) return s
+    if (s && !BLACKLIST.has(process.platform === "win32" ? path.win32.basename(s, ".exe") : path.basename(s))) return s
     if (process.platform === "win32") {
       if (Bun.which("pwsh")) return "pwsh"
       if (Bun.which("powershell")) return "powershell"
