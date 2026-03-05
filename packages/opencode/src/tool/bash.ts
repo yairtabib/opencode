@@ -177,16 +177,23 @@ export const BashTool = Tool.define("bash", async () => {
         { cwd, sessionID: ctx.sessionID, callID: ctx.callID },
         { env: {} },
       )
-      const proc = spawn(params.command, {
-        shell,
+      const env = {
+        ...process.env,
+        ...shellEnv.env,
+      }
+      const opts = {
         cwd,
-        env: {
-          ...process.env,
-          ...shellEnv.env,
-        },
-        stdio: ["ignore", "pipe", "pipe"],
+        env,
+        stdio: ["ignore", "pipe", "pipe"] as const,
         detached: process.platform !== "win32",
-      })
+      }
+      const proc =
+        process.platform === "win32" && ["pwsh", "powershell"].includes(name.toLowerCase())
+          ? spawn(shell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", params.command], opts)
+          : spawn(params.command, {
+              ...opts,
+              shell,
+            })
 
       let output = ""
 
@@ -242,6 +249,10 @@ export const BashTool = Tool.define("bash", async () => {
         }
 
         proc.once("exit", () => {
+          exited = true
+        })
+
+        proc.once("close", () => {
           exited = true
           cleanup()
           resolve()

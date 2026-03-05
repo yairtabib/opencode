@@ -23,7 +23,14 @@ const ctx = {
 const projectRoot = path.join(__dirname, "../..")
 const bin = process.execPath.replaceAll("\\", "/")
 const file = path.join(projectRoot, "test/tool/fixtures/output.ts").replaceAll("\\", "/")
-const fill = (mode: "lines" | "bytes", n: number) => `${bin} ${file} ${mode} ${n}`
+const kind = () => path.win32.basename(process.env.SHELL || "", ".exe").toLowerCase()
+const fill = (mode: "lines" | "bytes", n: number) => {
+  if (["pwsh", "powershell"].includes(kind())) {
+    if (mode === "lines") return `1..${n} | ForEach-Object { $_ }`
+    return `Write-Output ('a' * ${n})`
+  }
+  return `${bin} ${file} ${mode} ${n}`
+}
 const shells = (() => {
   if (process.platform !== "win32") {
     const shell = process.env.SHELL || Bun.which("bash") || "/bin/sh"
@@ -322,10 +329,13 @@ describe("tool.bash permissions", () => {
             requests.push(req)
           },
         }
-        await bash.execute({ command: "cat > /tmp/output.txt", description: "Redirect ls output" }, testCtx)
+        const command = ["pwsh", "powershell"].includes(kind())
+          ? "Write-Output test > output.txt"
+          : "cat > /tmp/output.txt"
+        await bash.execute({ command, description: "Redirect ls output" }, testCtx)
         const bashReq = requests.find((r) => r.permission === "bash")
         expect(bashReq).toBeDefined()
-        expect(bashReq!.patterns).toContain("cat > /tmp/output.txt")
+        expect(bashReq!.patterns).toContain(command)
       },
     })
   })
@@ -431,7 +441,7 @@ describe("tool.bash truncation", () => {
         expect(filepath).toBeTruthy()
 
         const saved = await Filesystem.readText(filepath)
-        const lines = saved.trim().split("\n")
+        const lines = saved.trim().split(/\r?\n/)
         expect(lines.length).toBe(lineCount)
         expect(lines[0]).toBe("1")
         expect(lines[lineCount - 1]).toBe(String(lineCount))
