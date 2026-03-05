@@ -24,6 +24,14 @@ export function parseShareUrl(url: string): string | null {
   return match ? match[1] : null
 }
 
+export function shouldAttachShareAuthHeaders(shareUrl: string, controlBaseUrl: string): boolean {
+  try {
+    return new URL(shareUrl).origin === new URL(controlBaseUrl).origin
+  } catch {
+    return false
+  }
+}
+
 /**
  * Transform ShareNext API response (flat array) into the nested structure for local file storage.
  *
@@ -100,15 +108,16 @@ export const ImportCommand = cmd({
         const parsed = new URL(args.file)
         const baseUrl = parsed.origin
         const req = await ShareNext.request()
+        const headers = shouldAttachShareAuthHeaders(args.file, req.baseUrl) ? req.headers : {}
 
         const dataPath = req.api.data(slug)
         let response = await fetch(`${baseUrl}${dataPath}`, {
-          headers: req.headers,
+          headers,
         })
 
         if (!response.ok && dataPath !== `/api/share/${slug}/data`) {
           response = await fetch(`${baseUrl}/api/share/${slug}/data`, {
-            headers: req.headers,
+            headers,
           })
         }
 
