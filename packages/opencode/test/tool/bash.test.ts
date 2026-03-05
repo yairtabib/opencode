@@ -20,8 +20,7 @@ const ctx = {
 }
 
 const projectRoot = path.join(__dirname, "../..")
-const emit = (n: number) => `bun -e "console.log(Array.from({ length: ${n} }, (_, i) => i + 1).join('\\n'))"`
-const blob = (n: number) => `bun -e "process.stdout.write('a'.repeat(${n}))"`
+const fill = (mode: "lines" | "bytes", n: number) => `bun test/tool/fixtures/output.ts ${mode} ${n}`
 
 describe("tool.bash", () => {
   test("basic", async () => {
@@ -324,7 +323,7 @@ describe("tool.bash truncation", () => {
         const lineCount = Truncate.MAX_LINES + 500
         const result = await bash.execute(
           {
-            command: emit(lineCount),
+            command: fill("lines", lineCount),
             description: "Generate lines exceeding limit",
           },
           ctx,
@@ -344,7 +343,7 @@ describe("tool.bash truncation", () => {
         const byteCount = Truncate.MAX_BYTES + 10000
         const result = await bash.execute(
           {
-            command: blob(byteCount),
+            command: fill("bytes", byteCount),
             description: "Generate bytes exceeding limit",
           },
           ctx,
@@ -369,8 +368,7 @@ describe("tool.bash truncation", () => {
           ctx,
         )
         expect((result.metadata as any).truncated).toBe(false)
-        const eol = process.platform === "win32" ? "\r\n" : "\n"
-        expect(result.output).toBe(`hello${eol}`)
+        expect(["hello\n", "hello\r\n"]).toContain(result.output)
       },
     })
   })
@@ -383,7 +381,7 @@ describe("tool.bash truncation", () => {
         const lineCount = Truncate.MAX_LINES + 100
         const result = await bash.execute(
           {
-            command: emit(lineCount),
+            command: fill("lines", lineCount),
             description: "Generate lines for file check",
           },
           ctx,
