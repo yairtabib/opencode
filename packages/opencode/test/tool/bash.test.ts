@@ -20,6 +20,8 @@ const ctx = {
 }
 
 const projectRoot = path.join(__dirname, "../..")
+const emit = (n: number) => `bun -e "console.log(Array.from({ length: ${n} }, (_, i) => i + 1).join('\\n'))"`
+const blob = (n: number) => `bun -e "process.stdout.write('a'.repeat(${n}))"`
 
 describe("tool.bash", () => {
   test("basic", async () => {
@@ -322,7 +324,7 @@ describe("tool.bash truncation", () => {
         const lineCount = Truncate.MAX_LINES + 500
         const result = await bash.execute(
           {
-            command: `seq 1 ${lineCount}`,
+            command: emit(lineCount),
             description: "Generate lines exceeding limit",
           },
           ctx,
@@ -342,7 +344,7 @@ describe("tool.bash truncation", () => {
         const byteCount = Truncate.MAX_BYTES + 10000
         const result = await bash.execute(
           {
-            command: `head -c ${byteCount} /dev/zero | tr '\\0' 'a'`,
+            command: blob(byteCount),
             description: "Generate bytes exceeding limit",
           },
           ctx,
@@ -381,7 +383,7 @@ describe("tool.bash truncation", () => {
         const lineCount = Truncate.MAX_LINES + 100
         const result = await bash.execute(
           {
-            command: `seq 1 ${lineCount}`,
+            command: emit(lineCount),
             description: "Generate lines for file check",
           },
           ctx,
