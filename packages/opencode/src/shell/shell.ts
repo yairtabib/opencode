@@ -36,6 +36,19 @@ export namespace Shell {
   }
   const BLACKLIST = new Set(["fish", "nu"])
 
+  function full(file: string) {
+    if (process.platform !== "win32") return file
+    if (path.win32.dirname(file) !== ".") return file
+    return Bun.which(file) || file
+  }
+
+  function pick() {
+    const pwsh = Bun.which("pwsh")
+    if (pwsh) return pwsh
+    const powershell = Bun.which("powershell")
+    if (powershell) return powershell
+  }
+
   function fallback() {
     if (process.platform === "win32") {
       if (Flag.OPENCODE_GIT_BASH_PATH) return Flag.OPENCODE_GIT_BASH_PATH
@@ -56,20 +69,22 @@ export namespace Shell {
 
   export const preferred = lazy(() => {
     const s = process.env.SHELL
-    if (s) return s
+    if (s) return full(s)
     if (process.platform === "win32") {
-      if (Bun.which("pwsh")) return "pwsh"
-      if (Bun.which("powershell")) return "powershell"
+      const shell = pick()
+      if (shell) return shell
     }
     return fallback()
   })
 
   export const acceptable = lazy(() => {
     const s = process.env.SHELL
-    if (s && !BLACKLIST.has(process.platform === "win32" ? path.win32.basename(s, ".exe") : path.basename(s))) return s
+    if (s && !BLACKLIST.has(process.platform === "win32" ? path.win32.basename(s, ".exe") : path.basename(s))) {
+      return full(s)
+    }
     if (process.platform === "win32") {
-      if (Bun.which("pwsh")) return "pwsh"
-      if (Bun.which("powershell")) return "powershell"
+      const shell = pick()
+      if (shell) return shell
     }
     return fallback()
   })
