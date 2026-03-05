@@ -112,7 +112,7 @@
       "autoincrement": false,
       "default": null,
       "generated": null,
-      "name": "workspace_id",
+      "name": "org_id",
       "entityType": "columns",
       "table": "account"
     },

@@ -8,7 +8,7 @@ export const AccountTable = sqliteTable("account", {
   access_token: text().notNull(),
   refresh_token: text().notNull(),
   token_expiry: integer(),
-  workspace_id: text(),
+  org_id: text(),
   ...Timestamps,
 })
 

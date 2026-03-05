@@ -5,7 +5,7 @@ CREATE TABLE `account` (
 	`access_token` text NOT NULL,
 	`refresh_token` text NOT NULL,
 	`token_expiry` integer,
-	`workspace_id` text,
+	`org_id` text,
 	`time_created` integer NOT NULL,
 	`time_updated` integer NOT NULL
 );

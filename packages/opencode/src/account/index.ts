@@ -8,7 +8,7 @@ export namespace Account {
     id: z.string(),
     email: z.string(),
     url: z.string(),
-    workspace_id: z.string().nullable(),
+    org_id: z.string().nullable(),
   })
   export type Account = z.infer<typeof Account>
 
@@ -17,12 +17,12 @@ export namespace Account {
       id: row.id,
       email: row.email,
       url: row.url,
-      workspace_id: row.workspace_id,
+      org_id: row.org_id,
     }
   }
 
   export function active(): Account | undefined {
-    const row = Database.use((db) => db.select().from(AccountTable).where(isNotNull(AccountTable.workspace_id)).get())
+    const row = Database.use((db) => db.select().from(AccountTable).where(isNotNull(AccountTable.org_id)).get())
     return row ? fromRow(row) : undefined
   }
 
@@ -34,13 +34,13 @@ export namespace Account {
     Database.use((db) => db.delete(AccountTable).where(eq(AccountTable.id, accountID)).run())
   }
 
-  export function use(accountID: string, workspaceID: string | null) {
+  export function use(accountID: string, orgID: string | null) {
     Database.use((db) =>
-      db.update(AccountTable).set({ workspace_id: workspaceID }).where(eq(AccountTable.id, accountID)).run(),
+      db.update(AccountTable).set({ org_id: orgID }).where(eq(AccountTable.id, accountID)).run(),
     )
   }
 
-  export async function workspaces(accountID: string): Promise<{ id: string; name: string }[]> {
+  export async function orgs(accountID: string): Promise<{ id: string; name: string }[]> {
     const row = Database.use((db) => db.select().from(AccountTable).where(eq(AccountTable.id, accountID)).get())
     if (!row) return []
 
@@ -57,7 +57,7 @@ export namespace Account {
     return json.map((x) => ({ id: x.id ?? "", name: x.name ?? "" }))
   }
 
-  export async function config(accountID: string, workspaceID: string): Promise<Record<string, unknown> | undefined> {
+  export async function config(accountID: string, orgID: string): Promise<Record<string, unknown> | undefined> {
     const row = Database.use((db) => db.select().from(AccountTable).where(eq(AccountTable.id, accountID)).get())
     if (!row) return undefined
 
@@ -65,7 +65,7 @@ export namespace Account {
     if (!access) return undefined
 
     const res = await fetch(`${row.url}/api/config`, {
-      headers: { authorization: `Bearer ${access}`, "x-org-id": workspaceID },
+      headers: { authorization: `Bearer ${access}`, "x-org-id": orgID },
     })
 
     if (!res.ok) return undefined
@@ -192,15 +192,15 @@ export namespace Account {
       const expiry = Date.now() + json.expires_in! * 1000
       const refresh = json.refresh_token ?? ""
 
-      // Fetch workspaces and get first one
+      // Fetch orgs and get first one
       const orgsRes = await fetch(`${input.server}/api/orgs`, {
         headers: { authorization: `Bearer ${access}` },
       })
       const orgs = (await orgsRes.json()) as Array<{ id?: string; name?: string }>
-      const firstWorkspaceId = orgs.length > 0 ? orgs[0].id : null
+      const firstOrgId = orgs.length > 0 ? orgs[0].id : null
 
       Database.use((db) => {
-        db.update(AccountTable).set({ workspace_id: null }).run()
+        db.update(AccountTable).set({ org_id: null }).run()
         db.insert(AccountTable)
           .values({
             id,
@@ -209,7 +209,7 @@ export namespace Account {
             access_token: access,
             refresh_token: refresh,
             token_expiry: expiry,
-            workspace_id: firstWorkspaceId,
+            org_id: firstOrgId,
           })
           .onConflictDoUpdate({
             target: AccountTable.id,
@@ -217,7 +217,7 @@ export namespace Account {
               access_token: access,
               refresh_token: refresh,
               token_expiry: expiry,
-              workspace_id: firstWorkspaceId,
+              org_id: firstOrgId,
             },
           })
           .run()

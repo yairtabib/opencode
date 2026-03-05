@@ -174,8 +174,8 @@ export namespace Config {
     }
 
     const active = Account.active()
-    if (active?.workspace_id) {
-      const config = await Account.config(active.id, active.workspace_id)
+    if (active?.org_id) {
+      const config = await Account.config(active.id, active.org_id)
       result = mergeConfigConcatArrays(result, config ?? {})
       const token = await Account.token(active.id)
       // TODO: this is bad

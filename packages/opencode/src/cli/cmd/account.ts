@@ -104,7 +104,7 @@ export const LogoutCommand = cmd({
 
 export const SwitchCommand = cmd({
   command: "switch",
-  describe: "switch active workspace",
+  describe: "switch active org",
   async handler() {
     UI.empty()
 
@@ -114,35 +114,35 @@ export const SwitchCommand = cmd({
       return
     }
 
-    const workspaces = await Account.workspaces(active.id)
-    if (workspaces.length === 0) {
-      UI.println("No workspaces found")
+    const orgs = await Account.orgs(active.id)
+    if (orgs.length === 0) {
+      UI.println("No orgs found")
       return
     }
 
-    prompts.intro("Switch workspace")
+    prompts.intro("Switch org")
 
-    const opts = workspaces.map((w) => ({
-      value: w.id,
-      label: w.id === active.workspace_id ? w.name + UI.Style.TEXT_DIM + " (active)" : w.name,
+    const opts = orgs.map((o) => ({
+      value: o.id,
+      label: o.id === active.org_id ? o.name + UI.Style.TEXT_DIM + " (active)" : o.name,
     }))
 
     const selected = await prompts.select({
-      message: "Select workspace",
+      message: "Select org",
       options: opts,
     })
 
     if (prompts.isCancel(selected)) return
 
     Account.use(active.id, selected as string)
-    prompts.outro("Switched to " + workspaces.find((w) => w.id === selected)?.name)
+    prompts.outro("Switched to " + orgs.find((o) => o.id === selected)?.name)
   },
 })
 
-export const WorkspacesCommand = cmd({
-  command: "workspaces",
-  aliases: ["workspace"],
-  describe: "list all workspaces",
+export const OrgsCommand = cmd({
+  command: "orgs",
+  aliases: ["org"],
+  describe: "list all orgs",
   async handler() {
     const accounts = Account.list()
 
@@ -152,9 +152,9 @@ export const WorkspacesCommand = cmd({
     }
 
     for (const account of accounts) {
-      const workspaces = await Account.workspaces(account.id)
-      for (const space of workspaces) {
-        UI.println([space.name, account.email, space.id].join("\t"))
+      const orgs = await Account.orgs(account.id)
+      for (const org of orgs) {
+        UI.println([org.name, account.email, org.id].join("\t"))
       }
     }
   },
