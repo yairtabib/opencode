@@ -12,6 +12,7 @@ import { lazy } from "../util/lazy"
 import { NamedError } from "@opencode-ai/util/error"
 import { Flag } from "../flag/flag"
 import { Auth } from "../auth"
+import { Env } from "../env"
 import {
   type ParseError as JsoncParseError,
   applyEdits,
@@ -176,10 +177,21 @@ export namespace Config {
     const active = Account.active()
     if (active?.org_id) {
       const config = await Account.config(active.id, active.org_id)
-      result = mergeConfigConcatArrays(result, config ?? {})
       const token = await Account.token(active.id)
-      // TODO: this is bad
-      process.env["OPENCODE_CONTROL_TOKEN"] = token
+      if (token) {
+        process.env["OPENCODE_CONTROL_TOKEN"] = token
+        Env.set("OPENCODE_CONTROL_TOKEN", token)
+      }
+
+      if (config) {
+        result = mergeConfigConcatArrays(
+          result,
+          await load(JSON.stringify(config), {
+            dir: path.dirname(`${active.url}/api/config`),
+            source: `${active.url}/api/config`,
+          }),
+        )
+      }
     }
 
     // Load managed config files last (highest priority) - enterprise admin-controlled
