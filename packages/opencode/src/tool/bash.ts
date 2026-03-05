@@ -181,18 +181,20 @@ export const BashTool = Tool.define("bash", async () => {
         ...process.env,
         ...shellEnv.env,
       }
-      const opts = {
-        cwd,
-        env,
-        stdio: ["ignore", "pipe", "pipe"] as const,
-        detached: process.platform !== "win32",
-      }
       const proc =
         process.platform === "win32" && ["pwsh", "powershell"].includes(name.toLowerCase())
-          ? spawn(shell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", params.command], opts)
+          ? spawn(shell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", params.command], {
+              cwd,
+              env,
+              stdio: ["ignore", "pipe", "pipe"],
+              detached: process.platform !== "win32",
+            })
           : spawn(params.command, {
-              ...opts,
               shell,
+              cwd,
+              env,
+              stdio: ["ignore", "pipe", "pipe"],
+              detached: process.platform !== "win32",
             })
 
       let output = ""
