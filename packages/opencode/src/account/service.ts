@@ -13,43 +13,43 @@ import { AccessToken, Account, AccountID, AccountServiceError, Login, OrgID, typ
 
 export { AccessToken, Account, AccountID, AccountServiceError, Login, OrgID, type PollResult } from "./schema"
 
-class RemoteOrg extends Schema.Class<RemoteOrg>("RemoteOrg")({
+const RemoteOrg = Schema.Struct({
   id: Schema.optional(OrgID),
   name: Schema.optional(Schema.String),
-}) {}
+})
 
 const RemoteOrgs = Schema.Array(RemoteOrg)
 
-class RemoteConfig extends Schema.Class<RemoteConfig>("RemoteConfig")({
+const RemoteConfig = Schema.Struct({
   config: Schema.Record(Schema.String, Schema.Json),
-}) {}
+})
 
-class TokenRefresh extends Schema.Class<TokenRefresh>("TokenRefresh")({
+const TokenRefresh = Schema.Struct({
   access_token: Schema.String,
   refresh_token: Schema.optional(Schema.String),
   expires_in: Schema.optional(Schema.Number),
-}) {}
+})
 
-class DeviceCode extends Schema.Class<DeviceCode>("DeviceCode")({
+const DeviceCode = Schema.Struct({
   device_code: Schema.String,
   user_code: Schema.String,
   verification_uri_complete: Schema.String,
   expires_in: Schema.Number,
   interval: Schema.Number,
-}) {}
+})
 
-class DeviceToken extends Schema.Class<DeviceToken>("DeviceToken")({
+const DeviceToken = Schema.Struct({
   access_token: Schema.optional(Schema.String),
   refresh_token: Schema.optional(Schema.String),
   expires_in: Schema.optional(Schema.Number),
   error: Schema.optional(Schema.String),
   error_description: Schema.optional(Schema.String),
-}) {}
+})
 
-class User extends Schema.Class<User>("User")({
+const User = Schema.Struct({
   id: Schema.optional(AccountID),
   email: Schema.optional(Schema.String),
-}) {}
+})
 
 const ClientId = Schema.Struct({ client_id: Schema.String })
 
@@ -145,12 +145,12 @@ export class AccountService extends ServiceMap.Service<
 
         const expiry = Option.fromNullishOr(parsed.expires_in).pipe(Option.map((e) => now + e * 1000))
 
-        yield* repo.persistToken(
-          AccountID.make(found.id),
-          parsed.access_token,
-          parsed.refresh_token ?? found.refresh_token,
+        yield* repo.persistToken({
+          accountID: AccountID.make(found.id),
+          accessToken: parsed.access_token,
+          refreshToken: parsed.refresh_token ?? found.refresh_token,
           expiry,
-        )
+        })
 
         return Option.some(AccessToken.make(parsed.access_token))
       })

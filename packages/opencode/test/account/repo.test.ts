@@ -1,4 +1,4 @@
-import { test, expect, afterEach } from "bun:test"
+import { test, expect, afterEach, afterAll } from "bun:test"
 import { Effect, ManagedRuntime, Option } from "effect"
 
 import { AccountRepo } from "../../src/account/repo"
@@ -7,6 +7,10 @@ import { resetDatabase } from "../fixture/db"
 
 afterEach(async () => {
   await resetDatabase()
+})
+
+afterAll(async () => {
+  await runtime.dispose()
 })
 
 const runtime = ManagedRuntime.make(AccountRepo.layer)
@@ -86,7 +90,7 @@ test("persistAccount sets active account (clears previous org_ids)", async () =>
   // Second account should be active
   const active = await run(repo.use((r) => r.active()))
   expect(Option.isSome(active)).toBe(true)
-  expect(Option.getOrThrow(active).id).toBe("user-2")
+  expect(Option.getOrThrow(active).id).toBe(AccountID.make("user-2"))
 })
 
 test("list returns all accounts", async () => {
@@ -195,7 +199,7 @@ test("persistToken updates token fields", async () => {
   )
 
   const newExpiry = Date.now() + 7200_000
-  await run(repo.use((r) => r.persistToken(id, "new_token", "new_refresh", Option.some(newExpiry))))
+  await run(repo.use((r) => r.persistToken({ accountID: id, accessToken: "new_token", refreshToken: "new_refresh", expiry: Option.some(newExpiry) })))
 
   const row = await run(repo.use((r) => r.getRow(id)))
   const value = Option.getOrThrow(row)
@@ -221,7 +225,7 @@ test("persistToken with no expiry sets token_expiry to null", async () => {
     ),
   )
 
-  await run(repo.use((r) => r.persistToken(id, "new_token", "new_refresh", Option.none())))
+  await run(repo.use((r) => r.persistToken({ accountID: id, accessToken: "new_token", refreshToken: "new_refresh", expiry: Option.none() })))
 
   const row = await run(repo.use((r) => r.getRow(id)))
   expect(Option.getOrThrow(row).token_expiry).toBeNull()

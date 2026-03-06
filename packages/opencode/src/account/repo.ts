@@ -17,13 +17,7 @@ const db = <A>(run: (db: DbClient) => A) =>
     catch: (cause) => new AccountServiceError({ operation: "db", message: "Database operation failed", cause }),
   })
 
-const fromRow = (row: AccountRow) =>
-  decodeAccount({
-    id: row.id,
-    email: row.email,
-    url: row.url,
-    org_id: row.org_id,
-  })
+const fromRow = (row: AccountRow) => decodeAccount(row)
 
 export class AccountRepo extends ServiceMap.Service<
   AccountRepo,
@@ -33,12 +27,12 @@ export class AccountRepo extends ServiceMap.Service<
     readonly remove: (accountID: AccountID) => Effect.Effect<void, AccountServiceError>
     readonly use: (accountID: AccountID, orgID: Option.Option<OrgID>) => Effect.Effect<void, AccountServiceError>
     readonly getRow: (accountID: AccountID) => Effect.Effect<Option.Option<AccountRow>, AccountServiceError>
-    readonly persistToken: (
-      accountID: AccountID,
-      accessToken: string,
-      refreshToken: string,
-      expiry: Option.Option<number>,
-    ) => Effect.Effect<void, AccountServiceError>
+    readonly persistToken: (input: {
+      accountID: AccountID
+      accessToken: string
+      refreshToken: string
+      expiry: Option.Option<number>
+    }) => Effect.Effect<void, AccountServiceError>
     readonly persistAccount: (input: {
       id: AccountID
       email: string
@@ -81,45 +75,48 @@ export class AccountRepo extends ServiceMap.Service<
         ),
       ),
 
-      persistToken: Effect.fn("AccountRepo.persistToken")(
-        (accountID: AccountID, accessToken: string, refreshToken: string, expiry: Option.Option<number>) =>
-          db((db) =>
-            db
-              .update(AccountTable)
-              .set({
-                access_token: accessToken,
-                refresh_token: refreshToken,
-                token_expiry: Option.getOrNull(expiry),
-              })
-              .where(eq(AccountTable.id, accountID))
-              .run(),
-          ).pipe(Effect.asVoid),
+      persistToken: Effect.fn("AccountRepo.persistToken")((input) =>
+        db((db) =>
+          db
+            .update(AccountTable)
+            .set({
+              access_token: input.accessToken,
+              refresh_token: input.refreshToken,
+              token_expiry: Option.getOrNull(input.expiry),
+            })
+            .where(eq(AccountTable.id, input.accountID))
+            .run(),
+        ).pipe(Effect.asVoid),
       ),
 
       persistAccount: Effect.fn("AccountRepo.persistAccount")((input) => {
         const orgID = Option.getOrNull(input.orgID)
-        return db((db) => {
-          db.update(AccountTable).set({ org_id: null }).where(isNotNull(AccountTable.org_id)).run()
-          db.insert(AccountTable)
-            .values({
-              id: input.id,
-              email: input.email,
-              url: input.url,
-              access_token: input.accessToken,
-              refresh_token: input.refreshToken,
-              token_expiry: input.expiry,
-              org_id: orgID,
-            })
-            .onConflictDoUpdate({
-              target: AccountTable.id,
-              set: {
-                access_token: input.accessToken,
-                refresh_token: input.refreshToken,
-                token_expiry: input.expiry,
-                org_id: orgID,
-              },
-            })
-            .run()
+        return Effect.try({
+          try: () =>
+            Database.transaction((tx) => {
+              tx.update(AccountTable).set({ org_id: null }).where(isNotNull(AccountTable.org_id)).run()
+              tx.insert(AccountTable)
+                .values({
+                  id: input.id,
+                  email: input.email,
+                  url: input.url,
+                  access_token: input.accessToken,
+                  refresh_token: input.refreshToken,
+                  token_expiry: input.expiry,
+                  org_id: orgID,
+                })
+                .onConflictDoUpdate({
+                  target: AccountTable.id,
+                  set: {
+                    access_token: input.accessToken,
+                    refresh_token: input.refreshToken,
+                    token_expiry: input.expiry,
+                    org_id: orgID,
+                  },
+                })
+                .run()
+            }),
+          catch: (cause) => new AccountServiceError({ operation: "db", message: "Database operation failed", cause }),
         }).pipe(Effect.asVoid)
       }),
     }),
