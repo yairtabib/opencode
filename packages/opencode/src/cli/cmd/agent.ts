@@ -15,7 +15,7 @@ import type { Argv } from "yargs"
 type AgentMode = "all" | "primary" | "subagent"
 
 const AVAILABLE_TOOLS = [
-  "bash",
+  "shell",
   "read",
   "write",
   "edit",

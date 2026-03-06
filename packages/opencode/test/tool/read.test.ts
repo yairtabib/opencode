@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { realpathSync } from "fs"
 import path from "path"
 import { ReadTool } from "../../src/tool/read"
 import { Instance } from "../../src/project/instance"
@@ -20,9 +21,16 @@ const ctx = {
   ask: async () => {},
 }
 
-const full = (p: string) => (process.platform === "win32" ? Filesystem.normalizePath(p) : p)
-const glob = (p: string) =>
-  process.platform === "win32" ? Filesystem.normalizePathPattern(p) : p.replaceAll("\\", "/")
+const full = (p: string) => {
+  if (process.platform !== "win32") return p
+  const file = path.win32.normalize(path.win32.resolve(p))
+  try {
+    return realpathSync.native(file)
+  } catch {
+    return file
+  }
+}
+const pat = (dir: string) => (process.platform === "win32" ? path.join(full(dir), "*") : path.join(dir, "*"))
 
 describe("tool.read external_directory permission", () => {
   test("allows reading absolute path inside project directory", async () => {
@@ -78,7 +86,7 @@ describe("tool.read external_directory permission", () => {
         await read.execute({ filePath: path.join(outerTmp.path, "secret.txt") }, testCtx)
         const extDirReq = requests.find((r) => r.permission === "external_directory")
         expect(extDirReq).toBeDefined()
-        expect(extDirReq!.patterns).toContain(glob(path.join(outerTmp.path, "*")))
+        expect(extDirReq!.patterns).toContain(pat(outerTmp.path))
       },
     })
   })
@@ -137,7 +145,7 @@ describe("tool.read external_directory permission", () => {
         await read.execute({ filePath: path.join(outerTmp.path, "external") }, testCtx)
         const extDirReq = requests.find((r) => r.permission === "external_directory")
         expect(extDirReq).toBeDefined()
-        expect(extDirReq!.patterns).toContain(glob(path.join(outerTmp.path, "external", "*")))
+        expect(extDirReq!.patterns).toContain(pat(path.join(outerTmp.path, "external")))
       },
     })
   })

@@ -29,13 +29,8 @@ export const ReadTool = Tool.define("read", {
     if (params.offset !== undefined && params.offset < 1) {
       throw new Error("offset must be greater than or equal to 1")
     }
-    let filepath = params.filePath
-    if (!path.isAbsolute(filepath)) {
-      filepath = path.resolve(Instance.directory, filepath)
-    }
-    if (process.platform === "win32") {
-      filepath = Filesystem.normalizePath(filepath)
-    }
+    let filepath = Filesystem.resolve(params.filePath, Instance.directory)
+    if (process.platform === "win32") filepath = Filesystem.canonical(filepath)
     const title = path.relative(Instance.worktree, filepath)
 
     const stat = Filesystem.stat(filepath)

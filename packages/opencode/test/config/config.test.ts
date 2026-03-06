@@ -641,34 +641,38 @@ test("does not try to install dependencies in read-only OPENCODE_CONFIG_DIR", as
   }
 })
 
-test("installs dependencies in writable OPENCODE_CONFIG_DIR", async () => {
-  await using tmp = await tmpdir<string>({
-    init: async (dir) => {
-      const cfg = path.join(dir, "configdir")
-      await fs.mkdir(cfg, { recursive: true })
-      return cfg
-    },
-  })
-
-  const prev = process.env.OPENCODE_CONFIG_DIR
-  process.env.OPENCODE_CONFIG_DIR = tmp.extra
-
-  try {
-    await Instance.provide({
-      directory: tmp.path,
-      fn: async () => {
-        await Config.get()
-        await Config.waitForDependencies()
+test(
+  "installs dependencies in writable OPENCODE_CONFIG_DIR",
+  async () => {
+    await using tmp = await tmpdir<string>({
+      init: async (dir) => {
+        const cfg = path.join(dir, "configdir")
+        await fs.mkdir(cfg, { recursive: true })
+        return cfg
       },
     })
 
-    expect(await Filesystem.exists(path.join(tmp.extra, "package.json"))).toBe(true)
-    expect(await Filesystem.exists(path.join(tmp.extra, ".gitignore"))).toBe(true)
-  } finally {
-    if (prev === undefined) delete process.env.OPENCODE_CONFIG_DIR
-    else process.env.OPENCODE_CONFIG_DIR = prev
-  }
-})
+    const prev = process.env.OPENCODE_CONFIG_DIR
+    process.env.OPENCODE_CONFIG_DIR = tmp.extra
+
+    try {
+      await Instance.provide({
+        directory: tmp.path,
+        fn: async () => {
+          await Config.get()
+          await Config.waitForDependencies()
+        },
+      })
+
+      expect(await Filesystem.exists(path.join(tmp.extra, "package.json"))).toBe(true)
+      expect(await Filesystem.exists(path.join(tmp.extra, ".gitignore"))).toBe(true)
+    } finally {
+      if (prev === undefined) delete process.env.OPENCODE_CONFIG_DIR
+      else process.env.OPENCODE_CONFIG_DIR = prev
+    }
+  },
+  { timeout: 30000 },
+)
 
 test("resolves scoped npm plugins in config", async () => {
   await using tmp = await tmpdir({
@@ -959,7 +963,7 @@ test("migrates legacy tools config to permissions - allow", async () => {
     fn: async () => {
       const config = await Config.get()
       expect(config.agent?.["test"]?.permission).toEqual({
-        bash: "allow",
+        shell: "allow",
         read: "allow",
       })
     },
@@ -990,7 +994,7 @@ test("migrates legacy tools config to permissions - deny", async () => {
     fn: async () => {
       const config = await Config.get()
       expect(config.agent?.["test"]?.permission).toEqual({
-        bash: "deny",
+        shell: "deny",
         webfetch: "deny",
       })
     },
@@ -1217,7 +1221,7 @@ test("migrates mixed legacy tools config", async () => {
     fn: async () => {
       const config = await Config.get()
       expect(config.agent?.["test"]?.permission).toEqual({
-        bash: "allow",
+        shell: "allow",
         edit: "allow",
         read: "deny",
         webfetch: "allow",
@@ -1253,7 +1257,101 @@ test("merges legacy tools with existing permission config", async () => {
       const config = await Config.get()
       expect(config.agent?.["test"]?.permission).toEqual({
         glob: "allow",
-        bash: "allow",
+        shell: "allow",
+      })
+    },
+  })
+})
+
+test("rewrites legacy bash config keys to shell in source files", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Filesystem.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify(
+          {
+            $schema: "https://opencode.ai/config.json",
+            permission: {
+              bash: "allow",
+            },
+            agent: {
+              test: {
+                tools: {
+                  bash: false,
+                },
+              },
+            },
+            experimental: {
+              primary_tools: ["bash", "read"],
+            },
+          },
+          null,
+          2,
+        ),
+      )
+    },
+  })
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await Config.get()
+      expect(config.permission).toEqual({ shell: "allow" })
+      expect(config.agent?.["test"]?.permission).toEqual({ shell: "deny" })
+      expect(config.experimental?.primary_tools).toEqual(["shell", "read"])
+
+      const text = await Filesystem.readText(path.join(tmp.path, "opencode.json"))
+      const data = JSON.parse(text)
+      expect(data.permission).toEqual({ shell: "allow" })
+      expect(data.agent.test.tools).toEqual({ shell: false })
+      expect(data.experimental.primary_tools).toEqual(["shell", "read"])
+      expect(await Filesystem.exists(path.join(tmp.path, "opencode.json.shell-migration.bak"))).toBe(true)
+    },
+  })
+})
+
+test("merges legacy bash permission into shell permission", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Filesystem.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify(
+          {
+            $schema: "https://opencode.ai/config.json",
+            permission: {
+              bash: {
+                "*": "allow",
+              },
+              shell: {
+                rm: "deny",
+              },
+            },
+          },
+          null,
+          2,
+        ),
+      )
+    },
+  })
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await Config.get()
+      expect(config.permission).toEqual({
+        shell: {
+          "*": "allow",
+          rm: "deny",
+        },
+      })
+
+      const text = await Filesystem.readText(path.join(tmp.path, "opencode.json"))
+      const data = JSON.parse(text)
+      expect(data.permission).toEqual({
+        shell: {
+          "*": "allow",
+          rm: "deny",
+        },
       })
     },
   })

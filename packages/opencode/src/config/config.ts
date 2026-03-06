@@ -188,6 +188,8 @@ export namespace Config {
       }
     }
 
+    result = normalizeShell(result) as Info
+
     // Migrate deprecated mode field to agent field
     for (const [name, mode] of Object.entries(result.mode ?? {})) {
       result.agent = mergeDeep(result.agent ?? {}, {
@@ -199,19 +201,19 @@ export namespace Config {
     }
 
     if (Flag.OPENCODE_PERMISSION) {
-      result.permission = mergeDeep(result.permission ?? {}, JSON.parse(Flag.OPENCODE_PERMISSION))
+      result.permission = mergeDeep(result.permission ?? {}, normalizeShell(JSON.parse(Flag.OPENCODE_PERMISSION)))
     }
 
     // Backwards compatibility: legacy top-level `tools` config
     if (result.tools) {
       const perms: Record<string, Config.PermissionAction> = {}
-      for (const [tool, enabled] of Object.entries(result.tools)) {
+      for (const [key, enabled] of Object.entries(result.tools)) {
         const action: Config.PermissionAction = enabled ? "allow" : "deny"
-        if (tool === "write" || tool === "edit" || tool === "patch" || tool === "multiedit") {
+        if (key === "write" || key === "edit" || key === "patch" || key === "multiedit") {
           perms.edit = action
           continue
         }
-        perms[tool] = action
+        perms[tool(key)] = action
       }
       result.permission = mergeDeep(perms, result.permission ?? {})
     }
@@ -600,15 +602,77 @@ export namespace Config {
     return val
   }
 
+  function tool(key: string) {
+    return key === "bash" ? "shell" : key
+  }
+
+  function mergeRule(a: unknown, b: unknown) {
+    if (b === undefined) return a
+    if (a === undefined) return b
+    if (typeof a === "string" && typeof b === "string") return b
+    const out: Record<string, unknown> = {}
+    const push = (value: unknown) => {
+      if (typeof value === "string") {
+        out["*"] = value
+        return
+      }
+      if (!isRecord(value)) return
+      for (const [key, item] of Object.entries(value)) {
+        if (key === "__originalKeys") continue
+        out[key] = item
+      }
+    }
+    push(a)
+    push(b)
+    return out
+  }
+
+  function normalizeShell<T>(data: T): T {
+    if (!isRecord(data)) return data
+
+    if (isRecord(data.permission) && "bash" in data.permission) {
+      data.permission.shell = mergeRule(data.permission.bash, data.permission.shell)
+      delete data.permission.bash
+    }
+
+    if (isRecord(data.tools) && "bash" in data.tools) {
+      if (!("shell" in data.tools)) data.tools.shell = data.tools.bash
+      delete data.tools.bash
+    }
+
+    if (isRecord(data.experimental) && Array.isArray(data.experimental.primary_tools)) {
+      data.experimental.primary_tools = Array.from(
+        new Set(data.experimental.primary_tools.map((item) => tool(String(item)))),
+      )
+    }
+
+    for (const key of ["agent", "mode"] as const) {
+      if (!isRecord(data[key])) continue
+      for (const value of Object.values(data[key])) {
+        normalizeShell(value)
+      }
+    }
+
+    return data
+  }
+
   const permissionTransform = (x: unknown): Record<string, PermissionRule> => {
     if (typeof x === "string") return { "*": x as PermissionAction }
     const obj = x as { __originalKeys?: string[] } & Record<string, unknown>
     const { __originalKeys, ...rest } = obj
-    if (!__originalKeys) return rest as Record<string, PermissionRule>
     const result: Record<string, PermissionRule> = {}
-    for (const key of __originalKeys) {
+    const keys = __originalKeys ?? Object.keys(rest)
+    const shell = mergeRule(rest.bash, rest.shell)
+    let seen = false
+    for (const key of keys) {
+      if (key === "bash" || key === "shell") {
+        if (shell !== undefined && !seen) result.shell = shell as PermissionRule
+        seen = true
+        continue
+      }
       if (key in rest) result[key] = rest[key] as PermissionRule
     }
+    if (shell !== undefined && !seen) result.shell = shell as PermissionRule
     return result
   }
 
@@ -623,6 +687,7 @@ export namespace Config {
           glob: PermissionRule.optional(),
           grep: PermissionRule.optional(),
           list: PermissionRule.optional(),
+          shell: PermissionRule.optional(),
           bash: PermissionRule.optional(),
           task: PermissionRule.optional(),
           external_directory: PermissionRule.optional(),
@@ -727,13 +792,13 @@ export namespace Config {
 
       // Convert legacy tools config to permissions
       const permission: Permission = {}
-      for (const [tool, enabled] of Object.entries(agent.tools ?? {})) {
+      for (const [key, enabled] of Object.entries(agent.tools ?? {})) {
         const action = enabled ? "allow" : "deny"
         // write, edit, patch, multiedit all map to edit permission
-        if (tool === "write" || tool === "edit" || tool === "patch" || tool === "multiedit") {
+        if (key === "write" || key === "edit" || key === "patch" || key === "multiedit") {
           permission.edit = action
         } else {
-          permission[tool] = action
+          permission[tool(key)] = action
         }
       }
       Object.assign(permission, agent.permission)
@@ -1195,7 +1260,7 @@ export namespace Config {
           const { provider, model, ...rest } = mod.default
           if (provider && model) result.model = `${provider}/${model}`
           result["$schema"] = "https://opencode.ai/config.json"
-          result = mergeDeep(result, rest)
+          result = mergeDeep(result, normalizeShell(rest))
           await Filesystem.writeJson(path.join(Global.Path.config, "config.json"), result)
           await fs.unlink(legacy)
         })
@@ -1218,6 +1283,12 @@ export namespace Config {
     const original = text
     const source = "path" in options ? options.path : options.source
     const isFile = "path" in options
+    const shell = shellText(text)
+    if (shell.changed) {
+      log.warn("bash config is deprecated; migrating to shell", { path: source })
+      text = shell.text
+      if (isFile) await writeShell(options.path, original, text)
+    }
     const data = await ConfigPaths.parseText(
       text,
       "path" in options ? options.path : { source: options.source, dir: options.dir },
@@ -1239,10 +1310,10 @@ export namespace Config {
     if (parsed.success) {
       if (!parsed.data.$schema && isFile) {
         parsed.data.$schema = "https://opencode.ai/config.json"
-        const updated = original.replace(/^\s*\{/, '{\n  "$schema": "https://opencode.ai/config.json",')
+        const updated = text.replace(/^\s*\{/, '{\n  "$schema": "https://opencode.ai/config.json",')
         await Bun.write(options.path, updated).catch(() => {})
       }
-      const data = parsed.data
+      const data = normalizeShell(parsed.data) as Info
       if (data.plugin && isFile) {
         for (let i = 0; i < data.plugin.length; i++) {
           const plugin = data.plugin[i]
@@ -1304,18 +1375,91 @@ export namespace Config {
     return candidates[0]
   }
 
+  const format = {
+    formattingOptions: {
+      insertSpaces: true,
+      tabSize: 2,
+    },
+  }
+
+  async function writeShell(filepath: string, original: string, text: string) {
+    const backup = filepath + ".shell-migration.bak"
+    const exists = await Filesystem.exists(backup)
+    const ready = exists
+      ? true
+      : await Bun.write(backup, original)
+          .then(() => true)
+          .catch((error) => {
+            log.warn("failed to backup config during shell migration", { path: filepath, backup, error })
+            return false
+          })
+    if (!ready) return
+    await Bun.write(filepath, text)
+      .then(() => log.info("migrated bash config to shell", { path: filepath, backup }))
+      .catch((error) => log.warn("failed to write shell migration", { path: filepath, backup, error }))
+  }
+
+  function editJsonc(input: string, target: string[], value: unknown) {
+    const edits = modify(input, target, value, format)
+    if (!edits.length) return input
+    return applyEdits(input, edits)
+  }
+
+  function shellNode(input: string, data: Record<string, unknown>, root: string[] = []) {
+    let text = input
+
+    if (isRecord(data.permission) && "bash" in data.permission) {
+      text = editJsonc(text, [...root, "permission", "shell"], mergeRule(data.permission.bash, data.permission.shell))
+      text = editJsonc(text, [...root, "permission", "bash"], undefined)
+    }
+
+    if (isRecord(data.tools) && "bash" in data.tools) {
+      text = editJsonc(text, [...root, "tools", "shell"], data.tools.shell ?? data.tools.bash)
+      text = editJsonc(text, [...root, "tools", "bash"], undefined)
+    }
+
+    return text
+  }
+
+  function shellText(input: string) {
+    const errors: JsoncParseError[] = []
+    const data = parseJsonc(input, errors, { allowTrailingComma: true })
+    if (errors.length || !isRecord(data)) return { text: input, changed: false }
+
+    let text = shellNode(input, data)
+
+    if (isRecord(data.agent)) {
+      for (const [key, value] of Object.entries(data.agent)) {
+        if (!isRecord(value)) continue
+        text = shellNode(text, value, ["agent", key])
+      }
+    }
+
+    if (isRecord(data.mode)) {
+      for (const [key, value] of Object.entries(data.mode)) {
+        if (!isRecord(value)) continue
+        text = shellNode(text, value, ["mode", key])
+      }
+    }
+
+    if (isRecord(data.experimental) && Array.isArray(data.experimental.primary_tools)) {
+      const list = data.experimental.primary_tools
+      const tools = Array.from(new Set(list.map((item) => tool(String(item)))))
+      if (tools.length !== list.length || tools.some((item, i) => item !== list[i])) {
+        text = editJsonc(text, ["experimental", "primary_tools"], tools)
+      }
+    }
+
+    return { text, changed: text !== input }
+  }
+
   function isRecord(value: unknown): value is Record<string, unknown> {
     return !!value && typeof value === "object" && !Array.isArray(value)
   }
 
   function patchJsonc(input: string, patch: unknown, path: string[] = []): string {
     if (!isRecord(patch)) {
-      const edits = modify(input, path, patch, {
-        formattingOptions: {
-          insertSpaces: true,
-          tabSize: 2,
-        },
-      })
+      const edits = modify(input, path, patch, format)
       return applyEdits(input, edits)
     }
 

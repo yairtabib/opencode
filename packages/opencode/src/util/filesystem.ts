@@ -2,7 +2,7 @@ import { chmod, mkdir, readFile, writeFile } from "fs/promises"
 import { createWriteStream, existsSync, statSync } from "fs"
 import { lookup } from "mime-types"
 import { realpathSync } from "fs"
-import { dirname, join, relative, win32 } from "path"
+import path, { dirname, join, relative, win32 } from "path"
 import { Readable } from "stream"
 import { pipeline } from "stream/promises"
 import { Glob } from "./glob"
@@ -100,26 +100,46 @@ export namespace Filesystem {
   }
 
   /**
-   * On Windows, normalize a path to its canonical casing using the filesystem.
-   * This is needed because Windows paths are case-insensitive but LSP servers
-   * may return paths with different casing than what we send them.
+   * Resolve a path lexically without consulting the filesystem.
+   * This keeps symlink semantics intact and is safe for paths that do not exist yet.
+   */
+  export function resolve(p: string, root = process.cwd()): string {
+    if (process.platform === "win32") {
+      const base = windowsPath(root)
+      const file = windowsPath(p)
+      return win32.normalize(win32.isAbsolute(file) ? win32.resolve(file) : win32.resolve(base, file))
+    }
+    return path.normalize(path.isAbsolute(p) ? p : path.resolve(root, p))
+  }
+
+  /**
+   * Canonicalize a path through the filesystem when possible.
+   * Falls back to lexical resolution when the path does not exist.
+   */
+  export function canonical(p: string, root = process.cwd()): string {
+    const file = resolve(p, root)
+    try {
+      return realpathSync.native(file)
+    } catch {
+      return file
+    }
+  }
+
+  /**
+   * Windows-only compatibility helper for call sites that still need canonical
+   * casing. Prefer resolve/canonical in new code.
    */
   export function normalizePath(p: string): string {
     if (process.platform !== "win32") return p
-    const resolved = win32.normalize(win32.resolve(windowsPath(p)))
-    try {
-      return realpathSync.native(resolved)
-    } catch {
-      return resolved
-    }
+    return canonical(p)
   }
 
   export function normalizePathPattern(p: string): string {
     if (process.platform !== "win32") return p
     if (p === "*") return p
     const match = p.match(/^(.*)[\\/]\*$/)
-    if (!match) return normalizePath(p)
-    return join(normalizePath(match[1]), "*")
+    if (!match) return canonical(p)
+    return join(canonical(match[1]), "*")
   }
 
   export function windowsPath(p: string): string {
