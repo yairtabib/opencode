@@ -332,6 +332,9 @@ describe("tool.bash permissions", () => {
       test(
         `normalizes external_directory workdir variants on Windows [${item.label}]`,
         withShell(item, async () => {
+          // This test only cares about the permission payload, so stop before the
+          // shell spawns to avoid slow Windows PowerShell startup dominating CI.
+          const err = new Error("stop after permission")
           await using outerTmp = await tmpdir()
           await using tmp = await tmpdir({ git: true })
           await Instance.provide({
@@ -346,17 +349,20 @@ describe("tool.bash permissions", () => {
                   ...ctx,
                   ask: async (req: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">) => {
                     requests.push(req)
+                    throw err
                   },
                 }
 
-                await bash.execute(
-                  {
-                    command: "echo ok",
-                    workdir: dir,
-                    description: "Echo from external dir",
-                  },
-                  testCtx,
-                )
+                await expect(
+                  bash.execute(
+                    {
+                      command: "echo ok",
+                      workdir: dir,
+                      description: "Echo from external dir",
+                    },
+                    testCtx,
+                  ),
+                ).rejects.toThrow(err.message)
 
                 const extDirReq = requests.find((r) => r.permission === "external_directory")
                 expect({ dir, patterns: extDirReq?.patterns, always: extDirReq?.always }).toEqual({
@@ -368,7 +374,6 @@ describe("tool.bash permissions", () => {
             },
           })
         }),
-        { timeout: 20000 },
       )
     }
   }
