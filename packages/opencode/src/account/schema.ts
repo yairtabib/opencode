@@ -42,10 +42,21 @@ export class Login extends Schema.Class<Login>("Login")({
   interval: Schema.Number,
 }) {}
 
-export type PollResult =
-  | { type: "success"; email: string }
-  | { type: "pending" }
-  | { type: "slow" }
-  | { type: "expired" }
-  | { type: "denied" }
-  | { type: "error"; msg: string }
+export class PollSuccess extends Schema.TaggedClass<PollSuccess>()("PollSuccess", {
+  email: Schema.String,
+}) {}
+
+export class PollPending extends Schema.TaggedClass<PollPending>()("PollPending", {}) {}
+
+export class PollSlow extends Schema.TaggedClass<PollSlow>()("PollSlow", {}) {}
+
+export class PollExpired extends Schema.TaggedClass<PollExpired>()("PollExpired", {}) {}
+
+export class PollDenied extends Schema.TaggedClass<PollDenied>()("PollDenied", {}) {}
+
+export class PollError extends Schema.TaggedClass<PollError>()("PollError", {
+  cause: Schema.Defect,
+}) {}
+
+export const PollResult = Schema.Union([PollSuccess, PollPending, PollSlow, PollExpired, PollDenied, PollError])
+export type PollResult = Schema.Schema.Type<typeof PollResult>

@@ -9,9 +9,37 @@ import {
 
 import { withTransientReadRetry } from "@/util/effect-http-client"
 import { AccountRepo, type AccountRow } from "./repo"
-import { AccessToken, Account, AccountID, AccountServiceError, Login, OrgID, type PollResult } from "./schema"
+import {
+  AccessToken,
+  Account,
+  AccountID,
+  AccountServiceError,
+  Login,
+  OrgID,
+  PollDenied,
+  PollError,
+  PollExpired,
+  PollPending,
+  type PollResult,
+  PollSlow,
+  PollSuccess,
+} from "./schema"
 
-export { AccessToken, Account, AccountID, AccountServiceError, Login, OrgID, type PollResult } from "./schema"
+export {
+  AccessToken,
+  Account,
+  AccountID,
+  AccountServiceError,
+  Login,
+  OrgID,
+  PollDenied,
+  PollError,
+  PollExpired,
+  PollPending,
+  type PollResult,
+  PollSlow,
+  PollSuccess,
+} from "./schema"
 
 const RemoteOrg = Schema.Struct({
   id: Schema.optional(OrgID),
@@ -267,11 +295,11 @@ export class AccountService extends ServiceMap.Service<
         )
 
         if (!parsed.access_token) {
-          if (parsed.error === "authorization_pending") return { type: "pending" } as const
-          if (parsed.error === "slow_down") return { type: "slow" } as const
-          if (parsed.error === "expired_token") return { type: "expired" } as const
-          if (parsed.error === "access_denied") return { type: "denied" } as const
-          return { type: "error", msg: parsed.error ?? JSON.stringify(parsed) } as const
+          if (parsed.error === "authorization_pending") return new PollPending()
+          if (parsed.error === "slow_down") return new PollSlow()
+          if (parsed.error === "expired_token") return new PollExpired()
+          if (parsed.error === "access_denied") return new PollDenied()
+          return new PollError({ cause: parsed.error })
         }
 
         const access = parsed.access_token
@@ -310,7 +338,7 @@ export class AccountService extends ServiceMap.Service<
         const userEmail = user.email
 
         if (!userId || !userEmail) {
-          return { type: "error", msg: "No id or email in response" } as const
+          return new PollError({ cause: "No id or email in response" })
         }
 
         const firstOrgID = remoteOrgs.length > 0 ? Option.fromNullishOr(remoteOrgs[0].id) : Option.none()
@@ -329,7 +357,7 @@ export class AccountService extends ServiceMap.Service<
           orgID: firstOrgID,
         })
 
-        return { type: "success", email: userEmail } as const
+        return new PollSuccess({ email: userEmail })
       })
 
       return AccountService.of({

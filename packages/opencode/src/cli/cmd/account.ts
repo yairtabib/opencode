@@ -1,7 +1,111 @@
 import { cmd } from "./cmd"
-import * as prompts from "@clack/prompts"
+import { Effect, Match, Option } from "effect"
 import { UI } from "../ui"
-import { Account, OrgID } from "@/account"
+import { OrgID } from "@/account"
+import { runtime } from "@/effect/runtime"
+import { AccountService, type PollResult } from "@/account/service"
+import { type AccountServiceError } from "@/account/schema"
+import * as Prompt from "../effect/prompt"
+import open from "open"
+
+const openBrowser = (url: string) => Effect.promise(() => open(url).catch(() => undefined))
+
+const println = (msg: string) => Effect.sync(() => UI.println(msg))
+
+const loginEffect = Effect.fn("login")(function* (url?: string) {
+  const service = yield* AccountService
+
+  yield* Prompt.intro("Log in")
+  const login = yield* service.login(url)
+
+  yield* Prompt.log.info("Go to: " + login.url)
+  yield* Prompt.log.info("Enter code: " + login.user)
+  yield* openBrowser(login.url)
+
+  const s = Prompt.spinner()
+  yield* s.start("Waiting for authorization...")
+
+  const poll = (wait: number): Effect.Effect<PollResult, AccountServiceError> =>
+    Effect.gen(function* () {
+      yield* Effect.sleep(wait)
+      const result = yield* service.poll(login)
+      if (result._tag === "PollPending") return yield* poll(wait)
+      if (result._tag === "PollSlow") return yield* poll(wait + 5000)
+      return result
+    })
+
+  const result = yield* poll(login.interval * 1000)
+
+  yield* Match.valueTags(result, {
+    PollSuccess: (r) =>
+      Effect.gen(function* () {
+        yield* s.stop("Logged in as " + r.email)
+        yield* Prompt.outro("Done")
+      }),
+    PollExpired: () => s.stop("Device code expired", 1),
+    PollDenied: () => s.stop("Authorization denied", 1),
+    PollError: (r) => s.stop("Error: " + String(r.cause), 1),
+    PollPending: () => s.stop("Unexpected state", 1),
+    PollSlow: () => s.stop("Unexpected state", 1),
+  })
+})
+
+const logoutEffect = Effect.fn("logout")(function* (email?: string) {
+  const service = yield* AccountService
+
+  if (email) {
+    const accounts = yield* service.list()
+    const match = accounts.find((a) => a.email === email)
+    if (!match) return yield* println("Account not found: " + email)
+    yield* service.remove(match.id)
+    yield* println("Logged out from " + email)
+    return
+  }
+
+  const active = yield* service.active()
+  if (Option.isNone(active)) return yield* println("Not logged in")
+  yield* service.remove(active.value.id)
+  yield* println("Logged out from " + active.value.email)
+})
+
+const switchEffect = Effect.fn("switch")(function* () {
+  const service = yield* AccountService
+
+  const active = yield* service.active()
+  if (Option.isNone(active)) return yield* println("Not logged in")
+
+  const orgs = yield* service.orgs(active.value.id)
+  if (orgs.length === 0) return yield* println("No orgs found")
+
+  yield* Prompt.intro("Switch org")
+
+  const opts = orgs.map((o) => ({
+    value: o.id,
+    label: o.id === active.value.org_id ? o.name + UI.Style.TEXT_DIM + " (active)" : o.name,
+  }))
+
+  const selected = yield* Prompt.select({ message: "Select org", options: opts })
+  yield* service.use(active.value.id, Option.some(OrgID.make(selected)))
+  yield* Prompt.outro("Switched to " + orgs.find((o) => o.id === selected)?.name)
+})
+
+const orgsEffect = Effect.fn("orgs")(function* () {
+  const service = yield* AccountService
+
+  const accounts = yield* service.list()
+  if (accounts.length === 0) return yield* println("No accounts found")
+
+  const allOrgs = yield* Effect.all(
+    accounts.map((account) =>
+      service.orgs(account.id).pipe(Effect.map((orgs) => orgs.map((org) => ({ org, account })))),
+    ),
+    { concurrency: "unbounded" },
+  )
+
+  for (const { org, account } of allOrgs.flat()) {
+    yield* println([org.name, account.email, org.id].join("\t"))
+  }
+})
 
 export const LoginCommand = cmd({
   command: "login [url]",
@@ -13,59 +117,7 @@ export const LoginCommand = cmd({
     }),
   async handler(args) {
     UI.empty()
-    prompts.intro("Log in")
-
-    const url = args.url as string | undefined
-    const login = await Account.login(url)
-
-    prompts.log.info("Go to: " + login.url)
-    prompts.log.info("Enter code: " + login.user)
-
-    try {
-      const open =
-        process.platform === "darwin"
-          ? ["open", login.url]
-          : process.platform === "win32"
-            ? ["cmd", "/c", "start", login.url]
-            : ["xdg-open", login.url]
-      Bun.spawn(open, { stdout: "ignore", stderr: "ignore" })
-    } catch {}
-
-    const spinner = prompts.spinner()
-    spinner.start("Waiting for authorization...")
-
-    let wait = login.interval * 1000
-    while (true) {
-      await Bun.sleep(wait)
-
-      const result = await Account.poll(login)
-
-      if (result.type === "success") {
-        spinner.stop("Logged in as " + result.email)
-        prompts.outro("Done")
-        return
-      }
-
-      if (result.type === "pending") continue
-
-      if (result.type === "slow") {
-        wait += 5000
-        continue
-      }
-
-      if (result.type === "expired") {
-        spinner.stop("Device code expired", 1)
-        return
-      }
-
-      if (result.type === "denied") {
-        spinner.stop("Authorization denied", 1)
-        return
-      }
-
-      spinner.stop("Error: " + result.msg, 1)
-      return
-    }
+    await runtime.runPromise(loginEffect(args.url))
   },
 })
 
@@ -78,27 +130,8 @@ export const LogoutCommand = cmd({
       type: "string",
     }),
   async handler(args) {
-    const email = args.email as string | undefined
-
-    if (email) {
-      const accounts = Account.list()
-      const match = accounts.find((a) => a.email === email)
-      if (!match) {
-        UI.println("Account not found: " + email)
-        return
-      }
-      Account.remove(match.id)
-      UI.println("Logged out from " + email)
-      return
-    }
-
-    const active = Account.active()
-    if (!active) {
-      UI.println("Not logged in")
-      return
-    }
-    Account.remove(active.id)
-    UI.println("Logged out from " + active.email)
+    UI.empty()
+    await runtime.runPromise(logoutEffect(args.email))
   },
 })
 
@@ -107,35 +140,7 @@ export const SwitchCommand = cmd({
   describe: "switch active org",
   async handler() {
     UI.empty()
-
-    const active = Account.active()
-    if (!active) {
-      UI.println("Not logged in")
-      return
-    }
-
-    const orgs = await Account.orgs(active.id)
-    if (orgs.length === 0) {
-      UI.println("No orgs found")
-      return
-    }
-
-    prompts.intro("Switch org")
-
-    const opts = orgs.map((o) => ({
-      value: o.id,
-      label: o.id === active.org_id ? o.name + UI.Style.TEXT_DIM + " (active)" : o.name,
-    }))
-
-    const selected = await prompts.select({
-      message: "Select org",
-      options: opts,
-    })
-
-    if (prompts.isCancel(selected)) return
-
-    Account.use(active.id, OrgID.make(selected))
-    prompts.outro("Switched to " + orgs.find((o) => o.id === selected)?.name)
+    await runtime.runPromise(switchEffect())
   },
 })
 
@@ -144,18 +149,7 @@ export const OrgsCommand = cmd({
   aliases: ["org"],
   describe: "list all orgs",
   async handler() {
-    const accounts = Account.list()
-
-    if (accounts.length === 0) {
-      UI.println("No accounts found")
-      return
-    }
-
-    for (const account of accounts) {
-      const orgs = await Account.orgs(account.id)
-      for (const org of orgs) {
-        UI.println([org.name, account.email, org.id].join("\t"))
-      }
-    }
+    UI.empty()
+    await runtime.runPromise(orgsEffect())
   },
 })

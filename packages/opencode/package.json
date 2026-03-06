@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@babel/core": "7.28.4",
+    "@effect/language-service": "0.78.0",
     "@octokit/webhooks-types": "7.6.1",
     "@opencode-ai/script": "workspace:*",
     "@parcel/watcher-darwin-arm64": "2.5.1",

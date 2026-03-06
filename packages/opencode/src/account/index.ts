@@ -1,4 +1,4 @@
-import { Effect, ManagedRuntime, Option } from "effect"
+import { Effect, Option } from "effect"
 
 import {
   Account as AccountSchema,
@@ -13,7 +13,7 @@ import {
 
 export { AccessToken, AccountID, OrgID } from "./service"
 
-const runtime = ManagedRuntime.make(AccountService.defaultLayer)
+import { runtime } from "@/effect/runtime"
 
 type AccountServiceShape = ReturnType<typeof AccountService.of>
 
