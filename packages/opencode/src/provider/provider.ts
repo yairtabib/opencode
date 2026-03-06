@@ -95,7 +95,7 @@ export namespace Provider {
     const reader = res.body.getReader()
     const body = new ReadableStream<Uint8Array>({
       async pull(ctrl) {
-        const part = await new Promise<ReadableStreamReadResult<Uint8Array>>((resolve, reject) => {
+        const part = await new Promise<Awaited<ReturnType<typeof reader.read>>>((resolve, reject) => {
           const id = setTimeout(() => {
             const err = new Error("SSE read timed out")
             ctl.abort(err)
@@ -1142,15 +1142,13 @@ export namespace Provider {
 
       const customFetch = options["fetch"]
       const chunkTimeout = options["chunkTimeout"] || DEFAULT_CHUNK_TIMEOUT
-      const timeout = options["timeout"]
       delete options["chunkTimeout"]
 
       options["fetch"] = async (input: any, init?: BunFetchRequestInit) => {
         // Preserve custom fetch if it exists, wrap it with timeout logic
         const fetchFn = customFetch ?? fetch
         const opts = init ?? {}
-        const chunkAbortCtl =
-          typeof chunkTimeout === "number" && chunkTimeout > 0 ? new AbortController() : undefined
+        const chunkAbortCtl = typeof chunkTimeout === "number" && chunkTimeout > 0 ? new AbortController() : undefined
         const signals: AbortSignal[] = []
 
         if (opts.signal) signals.push(opts.signal)
