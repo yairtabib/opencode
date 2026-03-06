@@ -21,6 +21,28 @@ import { Plugin } from "@/plugin"
 const MAX_METADATA_LENGTH = 30_000
 const DEFAULT_TIMEOUT = Flag.OPENCODE_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS || 2 * 60 * 1000
 const PS = new Set(["powershell", "pwsh"])
+const PATHS = new Set([
+  "cd",
+  "rm",
+  "cp",
+  "mv",
+  "mkdir",
+  "touch",
+  "chmod",
+  "chown",
+  "cat",
+  // Leave PowerShell aliases out for now. Common ones like cat/cp/mv/rm/mkdir
+  // already hit the entries above, and alias normalization should happen in one
+  // place later so we do not risk double-prompting.
+  "get-content",
+  "set-content",
+  "add-content",
+  "copy-item",
+  "move-item",
+  "remove-item",
+  "new-item",
+  "rename-item",
+])
 
 export const log = Log.create({ service: "bash-tool" })
 
@@ -145,11 +167,12 @@ export const BashTool = Tool.define("bash", async () => {
         commandText = commandText.trim()
 
         const command = parts(node)
+        const cmd = PS.has(lower) ? command[0]?.toLowerCase() : command[0]
 
         // not an exhaustive list, but covers most common cases
-        if (["cd", "rm", "cp", "mv", "mkdir", "touch", "chmod", "chown", "cat"].includes(command[0])) {
+        if (cmd && PATHS.has(cmd)) {
           for (const arg of command.slice(1)) {
-            if (arg.startsWith("-") || (command[0] === "chmod" && arg.startsWith("+"))) continue
+            if (arg.startsWith("-") || (cmd === "chmod" && arg.startsWith("+"))) continue
             const resolved = await $`realpath ${arg}`
               .cwd(cwd)
               .quiet()
@@ -168,7 +191,7 @@ export const BashTool = Tool.define("bash", async () => {
         }
 
         // cd covered by above check
-        if (command.length && command[0] !== "cd") {
+        if (command.length && cmd !== "cd") {
           patterns.add(commandText)
           always.add(BashArity.prefix(command).join(" ") + " *")
         }

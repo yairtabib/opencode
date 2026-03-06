@@ -206,7 +206,7 @@ describe("tool.bash permissions", () => {
   if (win) {
     for (const item of ps) {
       test(
-        `asks for external_directory permission for PowerShell file args [${item.label}]`,
+        `asks for external_directory permission for PowerShell aliases [${item.label}]`,
         withShell(item, async () => {
           await Instance.provide({
             directory: projectRoot,
@@ -222,6 +222,39 @@ describe("tool.bash permissions", () => {
               await bash.execute(
                 {
                   command: `cat ${win}/win.ini`,
+                  description: "Read Windows ini",
+                },
+                testCtx,
+              )
+              const extDirReq = requests.find((r) => r.permission === "external_directory")
+              expect(extDirReq).toBeDefined()
+              expect(extDirReq!.patterns).toContain(
+                Filesystem.normalizePathPattern(path.join(process.env.WINDIR!, "*")),
+              )
+            },
+          })
+        }),
+      )
+    }
+
+    for (const item of ps) {
+      test(
+        `asks for external_directory permission for PowerShell cmdlets [${item.label}]`,
+        withShell(item, async () => {
+          await Instance.provide({
+            directory: projectRoot,
+            fn: async () => {
+              const bash = await BashTool.init()
+              const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
+              const testCtx = {
+                ...ctx,
+                ask: async (req: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">) => {
+                  requests.push(req)
+                },
+              }
+              await bash.execute(
+                {
+                  command: `Get-Content ${win}/win.ini`,
                   description: "Read Windows ini",
                 },
                 testCtx,
