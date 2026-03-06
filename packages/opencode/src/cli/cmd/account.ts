@@ -1,7 +1,7 @@
 import { cmd } from "./cmd"
 import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
-import { Account } from "@/account"
+import { Account, OrgID } from "@/account"
 
 export const LoginCommand = cmd({
   command: "login [url]",
@@ -134,7 +134,7 @@ export const SwitchCommand = cmd({
 
     if (prompts.isCancel(selected)) return
 
-    Account.use(active.id, selected as string)
+    Account.use(active.id, OrgID.make(selected))
     prompts.outro("Switched to " + orgs.find((o) => o.id === selected)?.name)
   },
 })

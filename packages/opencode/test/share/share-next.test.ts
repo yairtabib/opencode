@@ -1,6 +1,6 @@
 import { test, expect, mock } from "bun:test"
 import { ShareNext } from "../../src/share/share-next"
-import { Account } from "../../src/account"
+import { AccessToken, Account, AccountID, OrgID } from "../../src/account"
 import { Config } from "../../src/config/config"
 
 test("ShareNext.request uses legacy share API without active org account", async () => {
@@ -30,12 +30,12 @@ test("ShareNext.request uses org share API with auth headers when account is act
   const originalToken = Account.token
 
   Account.active = mock(() => ({
-    id: "account-1",
+    id: AccountID.make("account-1"),
     email: "user@example.com",
     url: "https://control.example.com",
-    org_id: "org-1",
+    org_id: OrgID.make("org-1"),
   }))
-  Account.token = mock(async () => "st_test_token")
+  Account.token = mock(async () => AccessToken.make("st_test_token"))
 
   try {
     const req = await ShareNext.request()
@@ -60,10 +60,10 @@ test("ShareNext.request fails when org account has no token", async () => {
   const originalToken = Account.token
 
   Account.active = mock(() => ({
-    id: "account-1",
+    id: AccountID.make("account-1"),
     email: "user@example.com",
     url: "https://control.example.com",
-    org_id: "org-1",
+    org_id: OrgID.make("org-1"),
   }))
   Account.token = mock(async () => undefined)
 

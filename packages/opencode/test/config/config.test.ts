@@ -2,7 +2,7 @@ import { test, expect, describe, mock, afterEach } from "bun:test"
 import { Config } from "../../src/config/config"
 import { Instance } from "../../src/project/instance"
 import { Auth } from "../../src/auth"
-import { Account } from "../../src/account"
+import { AccessToken, Account, AccountID, OrgID } from "../../src/account"
 import { tmpdir } from "../fixture/fixture"
 import path from "path"
 import fs from "fs/promises"
@@ -205,10 +205,10 @@ test("resolves env templates in account config with account token", async () => 
   const originalControlToken = process.env["OPENCODE_CONTROL_TOKEN"]
 
   Account.active = mock(() => ({
-    id: "account-1",
+    id: AccountID.make("account-1"),
     email: "user@example.com",
     url: "https://control.example.com",
-    org_id: "org-1",
+    org_id: OrgID.make("org-1"),
   }))
 
   Account.config = mock(async () => ({
@@ -221,7 +221,7 @@ test("resolves env templates in account config with account token", async () => 
     },
   }))
 
-  Account.token = mock(async () => "st_test_token")
+  Account.token = mock(async () => AccessToken.make("st_test_token"))
 
   try {
     await using tmp = await tmpdir()
