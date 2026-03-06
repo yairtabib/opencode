@@ -43,7 +43,7 @@ describe("session.llm.hasToolCalls", () => {
           {
             type: "tool-call",
             toolCallId: "call-123",
-            toolName: "shell",
+            toolName: "bash",
           },
         ],
       },
@@ -59,7 +59,7 @@ describe("session.llm.hasToolCalls", () => {
           {
             type: "tool-result",
             toolCallId: "call-123",
-            toolName: "shell",
+            toolName: "bash",
           },
         ],
       },

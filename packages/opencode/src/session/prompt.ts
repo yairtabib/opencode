@@ -1551,7 +1551,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       id: Identifier.ascending("part"),
       messageID: msg.id,
       sessionID: input.sessionID,
-      tool: "shell",
+      tool: "bash",
       callID: ulid(),
       state: {
         status: "running",
@@ -1565,7 +1565,9 @@ NOTE: At any point in time through this workflow you should feel free to ask the
     }
     await Session.updatePart(part)
     const shell = Shell.preferred()
-    const shellName = Shell.name(shell)
+    const shellName = (
+      process.platform === "win32" ? path.win32.basename(shell, ".exe") : path.basename(shell)
+    ).toLowerCase()
 
     const invocations: Record<string, { args: string[] }> = {
       nu: {

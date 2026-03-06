@@ -15,10 +15,7 @@ export async function assertExternalDirectory(ctx: Tool.Context, target?: string
 
   if (options?.bypass) return
 
-  const full =
-    process.platform === "win32"
-      ? Filesystem.canonical(target, Instance.directory)
-      : Filesystem.resolve(target, Instance.directory)
+  const full = process.platform === "win32" ? Filesystem.normalizePath(target) : target
   if (Instance.containsPath(full)) return
 
   const kind = options?.kind ?? "file"

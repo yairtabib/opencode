@@ -103,7 +103,7 @@ Migrate residual non-git usages:
 - `src/cli/cmd/tui/util/clipboard.ts`
 - `src/util/archive.ts`
 - `src/file/ripgrep.ts`
-- `src/tool/shell.ts`
+- `src/tool/bash.ts`
 - `src/cli/cmd/uninstall.ts`
 
 ### Phase 4: Stabilize

@@ -75,11 +75,6 @@ test("evaluate - matches expanded $HOME pattern", () => {
   expect(result.action).toBe("allow")
 })
 
-test("evaluate - shell matches legacy bash rules", () => {
-  const result = PermissionNext.evaluate("shell", "rm", [{ permission: "bash", pattern: "rm", action: "deny" }])
-  expect(result.action).toBe("deny")
-})
-
 // merge tests
 
 test("merge - simple concatenation", () => {
