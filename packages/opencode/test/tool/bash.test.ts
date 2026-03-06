@@ -48,6 +48,8 @@ const shells = (() => {
   return list.filter((item, i) => list.findIndex((x) => x.shell.toLowerCase() === item.shell.toLowerCase()) === i)
 })()
 const ps = shells.filter((item) => ["pwsh", "powershell"].includes(item.label))
+const glob = (p: string) =>
+  process.platform === "win32" ? Filesystem.normalizePathPattern(p) : p.replaceAll("\\", "/")
 const forms = (dir: string) => {
   if (process.platform !== "win32") return [dir]
   const full = Filesystem.normalizePath(dir)
@@ -320,7 +322,7 @@ describe("tool.bash permissions", () => {
         )
         const extDirReq = requests.find((r) => r.permission === "external_directory")
         expect(extDirReq).toBeDefined()
-        expect(extDirReq!.patterns).toContain(path.join(os.tmpdir(), "*"))
+        expect(extDirReq!.patterns).toContain(glob(path.join(os.tmpdir(), "*")))
       },
     })
   })
