@@ -1231,6 +1231,42 @@ export namespace Provider {
     }
   }
 
+  async function pick(providerID: string, query: string[]) {
+    const provider = await state().then((state) => state.providers[providerID])
+    if (!provider) return
+
+    const models = Object.keys(provider.models)
+    for (const item of query) {
+      if (providerID === "amazon-bedrock") {
+        const prefixes = ["global.", "us.", "eu."]
+        const candidates = models.filter((model) => model.toLowerCase().includes(item.toLowerCase()))
+
+        // Model selection priority:
+        // 1. global. prefix (works everywhere)
+        // 2. User's region prefix (us., eu.)
+        // 3. Unprefixed model
+        const best = candidates.find((model) => model.startsWith("global."))
+        if (best) return getModel(providerID, best)
+
+        const region = provider.options?.region
+        if (region) {
+          const prefix = region.split("-")[0]
+          if (prefix === "us" || prefix === "eu") {
+            const hit = candidates.find((model) => model.startsWith(`${prefix}.`))
+            if (hit) return getModel(providerID, hit)
+          }
+        }
+
+        const bare = candidates.find((model) => !prefixes.some((prefix) => model.startsWith(prefix)))
+        if (bare) return getModel(providerID, bare)
+        continue
+      }
+
+      const hit = models.find((model) => model.toLowerCase().includes(item.toLowerCase()))
+      if (hit) return getModel(providerID, hit)
+    }
+  }
+
   export async function getSmallModel(providerID: string) {
     const cfg = await Config.get()
 
@@ -1239,54 +1275,25 @@ export namespace Provider {
       return getModel(parsed.providerID, parsed.modelID)
     }
 
-    const provider = await state().then((state) => state.providers[providerID])
-    if (provider) {
-      let priority = [
-        "claude-haiku-4-5",
-        "claude-haiku-4.5",
-        "3-5-haiku",
-        "3.5-haiku",
-        "gemini-3-flash",
-        "gemini-2.5-flash",
-        "gpt-5-nano",
-      ]
-      if (providerID.startsWith("opencode")) {
-        priority = ["gpt-5-nano"]
-      }
-      if (providerID.startsWith("github-copilot")) {
-        // prioritize free models for github copilot
-        priority = ["gpt-5-mini", "claude-haiku-4.5", ...priority]
-      }
-      for (const item of priority) {
-        if (providerID === "amazon-bedrock") {
-          const crossRegionPrefixes = ["global.", "us.", "eu."]
-          const candidates = Object.keys(provider.models).filter((m) => m.includes(item))
-
-          // Model selection priority:
-          // 1. global. prefix (works everywhere)
-          // 2. User's region prefix (us., eu.)
-          // 3. Unprefixed model
-          const globalMatch = candidates.find((m) => m.startsWith("global."))
-          if (globalMatch) return getModel(providerID, globalMatch)
-
-          const region = provider.options?.region
-          if (region) {
-            const regionPrefix = region.split("-")[0]
-            if (regionPrefix === "us" || regionPrefix === "eu") {
-              const regionalMatch = candidates.find((m) => m.startsWith(`${regionPrefix}.`))
-              if (regionalMatch) return getModel(providerID, regionalMatch)
-            }
-          }
-
-          const unprefixed = candidates.find((m) => !crossRegionPrefixes.some((p) => m.startsWith(p)))
-          if (unprefixed) return getModel(providerID, unprefixed)
-        } else {
-          for (const model of Object.keys(provider.models)) {
-            if (model.includes(item)) return getModel(providerID, model)
-          }
-        }
-      }
+    let query = [
+      "claude-haiku-4-5",
+      "claude-haiku-4.5",
+      "3-5-haiku",
+      "3.5-haiku",
+      "gemini-3-flash",
+      "gemini-2.5-flash",
+      "gpt-5-nano",
+    ]
+    if (providerID.startsWith("opencode")) {
+      query = ["gpt-5-nano"]
     }
+    if (providerID.startsWith("github-copilot")) {
+      // prioritize free models for github copilot
+      query = ["gpt-5-mini", "claude-haiku-4.5", ...query]
+    }
+
+    const model = await pick(providerID, query)
+    if (model) return model
 
     // Check if opencode provider is available before using it
     const opencodeProvider = await state().then((state) => state.providers["opencode"])
@@ -1294,6 +1301,22 @@ export namespace Provider {
       return getModel("opencode", "gpt-5-nano")
     }
 
+    return undefined
+  }
+
+  export async function getExploreModel(providerID: string) {
+    const model = await pick(providerID, [
+      "gpt-5.3-codex-spark",
+      "claude-haiku-4-5",
+      "claude-haiku-4.5",
+      "gemini-3-flash",
+      "minimax-m2.5",
+      "minimax-m2-5",
+      "glm-5",
+      "kimi-k2.5",
+      "kimi-k2-5",
+    ])
+    if (model) return model
     return undefined
   }
 

@@ -964,6 +964,205 @@ test("getSmallModel respects config small_model override", async () => {
   })
 })
 
+test("getExploreModel returns preferred explore model", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      provider: {
+        "custom-provider": {
+          name: "Custom Provider",
+          npm: "@ai-sdk/openai-compatible",
+          api: "https://api.custom.com/v1",
+          env: ["CUSTOM_API_KEY"],
+          models: {
+            "gpt-5-3-codex-spark": {
+              name: "GPT-5.3 Codex Spark",
+              tool_call: true,
+              limit: {
+                context: 128000,
+                output: 4096,
+              },
+            },
+            "claude-haiku-4.5": {
+              name: "Claude Haiku 4.5",
+              tool_call: true,
+              limit: {
+                context: 128000,
+                output: 4096,
+              },
+            },
+            "gemini-3-flash-preview": {
+              name: "Gemini 3 Flash",
+              tool_call: true,
+              limit: {
+                context: 128000,
+                output: 4096,
+              },
+            },
+            "MiniMax-M2-5": {
+              name: "MiniMax M2.5",
+              tool_call: true,
+              limit: {
+                context: 128000,
+                output: 4096,
+              },
+            },
+            "GLM-5": {
+              name: "GLM-5",
+              tool_call: true,
+              limit: {
+                context: 128000,
+                output: 4096,
+              },
+            },
+            "Kimi-K2-5": {
+              name: "Kimi K2.5",
+              tool_call: true,
+              limit: {
+                context: 128000,
+                output: 4096,
+              },
+            },
+          },
+          options: {
+            apiKey: "custom-key",
+          },
+        },
+      },
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const model = await Provider.getExploreModel("custom-provider")
+      expect(model).toBeDefined()
+      expect(model?.id).toBe("gpt-5-3-codex-spark")
+    },
+  })
+})
+
+test("getExploreModel matches fallback models case-insensitively", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      provider: {
+        "custom-provider": {
+          name: "Custom Provider",
+          npm: "@ai-sdk/openai-compatible",
+          api: "https://api.custom.com/v1",
+          env: ["CUSTOM_API_KEY"],
+          models: {
+            "MiniMax-M2-5": {
+              name: "MiniMax M2.5",
+              tool_call: true,
+              limit: {
+                context: 128000,
+                output: 4096,
+              },
+            },
+            "GLM-5": {
+              name: "GLM-5",
+              tool_call: true,
+              limit: {
+                context: 128000,
+                output: 4096,
+              },
+            },
+            "Kimi-K2-5": {
+              name: "Kimi K2.5",
+              tool_call: true,
+              limit: {
+                context: 128000,
+                output: 4096,
+              },
+            },
+          },
+          options: {
+            apiKey: "custom-key",
+          },
+        },
+      },
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const model = await Provider.getExploreModel("custom-provider")
+      expect(model).toBeDefined()
+      expect(model?.id).toBe("MiniMax-M2-5")
+    },
+  })
+})
+
+test("getExploreModel matches kimi separator variant", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      provider: {
+        "custom-provider": {
+          name: "Custom Provider",
+          npm: "@ai-sdk/openai-compatible",
+          api: "https://api.custom.com/v1",
+          env: ["CUSTOM_API_KEY"],
+          models: {
+            "Kimi-K2-5": {
+              name: "Kimi K2.5",
+              tool_call: true,
+              limit: {
+                context: 128000,
+                output: 4096,
+              },
+            },
+          },
+          options: {
+            apiKey: "custom-key",
+          },
+        },
+      },
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const model = await Provider.getExploreModel("custom-provider")
+      expect(model).toBeDefined()
+      expect(model?.id).toBe("Kimi-K2-5")
+    },
+  })
+})
+
+test("getExploreModel returns undefined when no explore model matches", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      provider: {
+        "custom-provider": {
+          name: "Custom Provider",
+          npm: "@ai-sdk/openai-compatible",
+          api: "https://api.custom.com/v1",
+          env: ["CUSTOM_API_KEY"],
+          models: {
+            "custom-model": {
+              name: "Custom Model",
+              tool_call: true,
+              limit: {
+                context: 128000,
+                output: 4096,
+              },
+            },
+          },
+          options: {
+            apiKey: "custom-key",
+          },
+        },
+      },
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const model = await Provider.getExploreModel("custom-provider")
+      expect(model).toBeUndefined()
+    },
+  })
+})
+
 test("provider.sort prioritizes preferred models", () => {
   const models = [
     { id: "random-model", name: "Random" },

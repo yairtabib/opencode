@@ -5,6 +5,7 @@ import { Session } from "../session"
 import { MessageV2 } from "../session/message-v2"
 import { Identifier } from "../id/id"
 import { Agent } from "../agent/agent"
+import { Provider } from "../provider/provider"
 import { SessionPrompt } from "../session/prompt"
 import { iife } from "@/util/iife"
 import { defer } from "@/util/defer"
@@ -102,11 +103,30 @@ export const TaskTool = Tool.define("task", async (ctx) => {
       })
       const msg = await MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID })
       if (msg.info.role !== "assistant") throw new Error("Not an assistant message")
+      const info = msg.info
 
-      const model = agent.model ?? {
-        modelID: msg.info.modelID,
-        providerID: msg.info.providerID,
-      }
+      const model = await iife(async () => {
+        if (agent.model) return agent.model
+        if (agent.name !== "explore") {
+          return {
+            modelID: info.modelID,
+            providerID: info.providerID,
+          }
+        }
+
+        const pick = await Provider.getExploreModel(info.providerID)
+        if (pick) {
+          return {
+            modelID: pick.id,
+            providerID: pick.providerID,
+          }
+        }
+
+        return {
+          modelID: info.modelID,
+          providerID: info.providerID,
+        }
+      })
 
       ctx.metadata({
         title: params.description,
