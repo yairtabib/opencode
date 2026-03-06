@@ -19,16 +19,31 @@ const disposal = {
 }
 
 export const Instance = {
-  async provide<R>(input: { directory: string; init?: () => Promise<any>; fn: () => R }): Promise<R> {
+  async provide<R>(input: {
+    directory: string
+    project?: Project.Info
+    init?: () => Promise<any>
+    fn: () => R
+  }): Promise<R> {
     let existing = cache.get(input.directory)
     if (!existing) {
-      Log.Default.info("creating instance", { directory: input.directory })
+      debugger;
+      Log.Default.info("creating instance", { directory: input.directory, project: input.project })
       existing = iife(async () => {
-        const { project, sandbox } = await Project.fromDirectory(input.directory)
-        const ctx = {
-          directory: input.directory,
-          worktree: sandbox,
-          project,
+        let ctx
+        if (input.project) {
+          ctx = {
+            directory: input.directory,
+            worktree: input.directory,
+            project: input.project,
+          }
+        } else {
+          const { project, sandbox } = await Project.fromDirectory(input.directory)
+          ctx = {
+            directory: input.directory,
+            worktree: sandbox,
+            project,
+          }
         }
         await context.provide(ctx, async () => {
           await input.init?.()

@@ -377,6 +377,8 @@ export namespace Worktree {
 
         const booted = await Instance.provide({
           directory: info.directory,
+          // worktrees should inherit the same project as the local project
+          project: Instance.project,
           init: InstanceBootstrap,
           fn: () => undefined,
         })
@@ -411,7 +413,7 @@ export namespace Worktree {
         await runStartScripts(info.directory, { projectID, extra })
       }
 
-      void start().catch((error) => {
+      return start().catch((error) => {
         log.error("worktree start task failed", { directory: info.directory, error })
       })
     }
