@@ -40,7 +40,7 @@ import { SessionSidePanel } from "@/pages/session/session-side-panel"
 import { TerminalPanel } from "@/pages/session/terminal-panel"
 import { useSessionCommands } from "@/pages/session/use-session-commands"
 import { useSessionHashScroll } from "@/pages/session/use-session-hash-scroll"
-import { same } from "@/utils/same"
+import { same } from "@opencode-ai/util/array"
 
 const emptyUserMessages: UserMessage[] = []
 
