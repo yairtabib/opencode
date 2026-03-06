@@ -138,16 +138,10 @@ function envValue(key: string) {
 }
 
 function expandEnv(text: string) {
-  let ok = true
   const out = unquote(text).replace(/\$env:([A-Za-z_][A-Za-z0-9_]*)/gi, (_, key: string) => {
     const value = envValue(key)
-    if (!value) {
-      ok = false
-      return ""
-    }
-    return value
+    return value || ""
   })
-  if (!ok) return
   return home(out)
 }
 
@@ -162,25 +156,30 @@ function provider(text: string) {
 function dynamicPath(text: string, ps: boolean) {
   if (text.startsWith("(") || text.startsWith("@(")) return true
   if (text.includes("$(") || text.includes("${") || text.includes("`")) return true
-  if (/[?*\[]/.test(text)) return true
   if (ps) return /\$(?!env:)/i.test(text)
   return text.includes("$")
 }
 
+function prefix(text: string) {
+  const match = /[?*\[]/.exec(text)
+  if (!match) return text
+  if (match.index === 0) return
+  return text.slice(0, match.index)
+}
+
 function resolvePath(text: string, root: string) {
   if (process.platform === "win32") {
-    const file = Filesystem.windowsPath(text)
-    const full = path.isAbsolute(file) ? path.resolve(file) : path.resolve(root, file)
-    return Filesystem.normalizePath(full)
+    return Filesystem.normalizePath(path.resolve(root, Filesystem.windowsPath(text)))
   }
-  return path.isAbsolute(text) ? path.resolve(text) : path.resolve(root, text)
+  return path.resolve(root, text)
 }
 
 function argPath(arg: string, cwd: string, ps: boolean) {
   const text = ps ? expandEnv(arg) : home(unquote(arg))
-  if (!text || dynamicPath(text, ps)) return
-  if (ps && provider(text)) return
-  return resolvePath(text, cwd)
+  const file = text && prefix(text)
+  if (!file || dynamicPath(file, ps)) return
+  if (ps && provider(file)) return
+  return resolvePath(file, cwd)
 }
 
 function pathArgs(list: Part[], ps: boolean) {
@@ -193,22 +192,16 @@ function pathArgs(list: Part[], ps: boolean) {
 
   const out: string[] = []
   let want = false
-  let skip = false
   for (const item of list.slice(1)) {
     if (want) {
       out.push(item.text)
       want = false
       continue
     }
-    if (skip) {
-      skip = false
-      continue
-    }
     if (item.type === "command_parameter") {
       const flag = item.text.toLowerCase()
       if (SWITCHES.has(flag)) continue
       want = FLAGS.has(flag)
-      skip = !want
       continue
     }
     out.push(item.text)

@@ -187,7 +187,97 @@ describe("tool.bash permissions", () => {
     )
   }
 
+  each("asks for external_directory permission for wildcard external paths", async () => {
+    await Instance.provide({
+      directory: projectRoot,
+      fn: async () => {
+        const bash = await BashTool.init()
+        const err = new Error("stop after permission")
+        const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
+        const file = process.platform === "win32" ? `${process.env.WINDIR!.replaceAll("\\", "/")}/*` : "/etc/*"
+        const want = process.platform === "win32" ? glob(path.join(process.env.WINDIR!, "*")) : "/etc/*"
+        await expect(
+          bash.execute(
+            {
+              command: `cat ${file}`,
+              description: "Read wildcard path",
+            },
+            capture(requests, err),
+          ),
+        ).rejects.toThrow(err.message)
+        const extDirReq = requests.find((r) => r.permission === "external_directory")
+        expect(extDirReq).toBeDefined()
+        expect(extDirReq!.patterns).toContain(want)
+      },
+    })
+  })
+
   if (process.platform === "win32") {
+    for (const item of ps) {
+      test(
+        `asks for external_directory permission for PowerShell paths after switches [${item.label}]`,
+        withShell(item, async () => {
+          await Instance.provide({
+            directory: projectRoot,
+            fn: async () => {
+              const bash = await BashTool.init()
+              const err = new Error("stop after permission")
+              const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
+              await expect(
+                bash.execute(
+                  {
+                    command: `Copy-Item -PassThru "${process.env.WINDIR!.replaceAll("\\", "/")}/win.ini" ./out`,
+                    description: "Copy Windows ini",
+                  },
+                  capture(requests, err),
+                ),
+              ).rejects.toThrow(err.message)
+              const extDirReq = requests.find((r) => r.permission === "external_directory")
+              expect(extDirReq).toBeDefined()
+              expect(extDirReq!.patterns).toContain(glob(path.join(process.env.WINDIR!, "*")))
+            },
+          })
+        }),
+      )
+    }
+
+    for (const item of ps) {
+      test(
+        `asks for external_directory permission for missing PowerShell env paths [${item.label}]`,
+        withShell(item, async () => {
+          const key = "OPENCODE_TEST_MISSING"
+          const prev = process.env[key]
+          delete process.env[key]
+          try {
+            await Instance.provide({
+              directory: projectRoot,
+              fn: async () => {
+                const bash = await BashTool.init()
+                const err = new Error("stop after permission")
+                const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
+                const root = path.parse(process.env.WINDIR!).root.replace(/[\\/]+$/, "")
+                await expect(
+                  bash.execute(
+                    {
+                      command: `Get-Content -Path "${root}$env:${key}\\Windows\\win.ini"`,
+                      description: "Read Windows ini with missing env",
+                    },
+                    capture(requests, err),
+                  ),
+                ).rejects.toThrow(err.message)
+                const extDirReq = requests.find((r) => r.permission === "external_directory")
+                expect(extDirReq).toBeDefined()
+                expect(extDirReq!.patterns).toContain(glob(path.join(process.env.WINDIR!, "*")))
+              },
+            })
+          } finally {
+            if (prev === undefined) delete process.env[key]
+            else process.env[key] = prev
+          }
+        }),
+      )
+    }
+
     for (const item of ps) {
       test(
         `asks for external_directory permission for PowerShell env paths [${item.label}]`,
