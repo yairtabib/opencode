@@ -1,9 +1,8 @@
 import { cmd } from "./cmd"
-import { Effect, Match, Option } from "effect"
+import { Duration, Effect, Match, Option } from "effect"
 import { UI } from "../ui"
-import { OrgID } from "@/account"
 import { runtime } from "@/effect/runtime"
-import { AccountService, type PollResult } from "@/account/service"
+import { AccountService, OrgID, PollExpired, type PollResult } from "@/account/service"
 import { type AccountServiceError } from "@/account/schema"
 import * as Prompt from "../effect/prompt"
 import open from "open"
@@ -34,7 +33,10 @@ const loginEffect = Effect.fn("login")(function* (url?: string) {
       return result
     })
 
-  const result = yield* poll(login.interval * 1000)
+  const result = yield* poll(login.interval * 1000).pipe(
+    Effect.timeout(Duration.seconds(login.expiry)),
+    Effect.catchTag("TimeoutError", () => Effect.succeed(new PollExpired())),
+  )
 
   yield* Match.valueTags(result, {
     PollSuccess: (r) =>
@@ -84,9 +86,11 @@ const switchEffect = Effect.fn("switch")(function* () {
     label: o.id === active.value.org_id ? o.name + UI.Style.TEXT_DIM + " (active)" : o.name,
   }))
 
-  const selected = yield* Prompt.select({ message: "Select org", options: opts })
-  yield* service.use(active.value.id, Option.some(OrgID.make(selected)))
-  yield* Prompt.outro("Switched to " + orgs.find((o) => o.id === selected)?.name)
+  const selected = yield* Prompt.select<OrgID>({ message: "Select org", options: opts })
+  if (Option.isNone(selected)) return
+
+  yield* service.use(active.value.id, Option.some(selected.value))
+  yield* Prompt.outro("Switched to " + orgs.find((o) => o.id === selected.value)?.name)
 })
 
 const orgsEffect = Effect.fn("orgs")(function* () {

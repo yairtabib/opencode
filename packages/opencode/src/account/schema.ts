@@ -27,6 +27,11 @@ export class Account extends Schema.Class<Account>("Account")({
   org_id: Schema.NullOr(OrgID),
 }) {}
 
+export class Org extends Schema.Class<Org>("Org")({
+  id: OrgID,
+  name: Schema.String,
+}) {}
+
 export class AccountServiceError extends Schema.TaggedErrorClass<AccountServiceError>()("AccountServiceError", {
   operation: Schema.String,
   message: Schema.String,

@@ -1,7 +1,5 @@
 import * as prompts from "@clack/prompts"
-import { Effect, Schema } from "effect"
-
-export class PromptCancelled extends Schema.TaggedErrorClass<PromptCancelled>()("PromptCancelled", {}) {}
+import { Effect, Option } from "effect"
 
 export const intro = (msg: string) => Effect.sync(() => prompts.intro(msg))
 export const outro = (msg: string) => Effect.sync(() => prompts.outro(msg))
@@ -12,7 +10,10 @@ export const log = {
 
 export const select = <Value>(opts: Parameters<typeof prompts.select<Value>>[0]) =>
   Effect.tryPromise(() => prompts.select(opts)).pipe(
-    Effect.flatMap((result) => (prompts.isCancel(result) ? Effect.fail(new PromptCancelled()) : Effect.succeed(result))),
+    Effect.map((result) => {
+      if (prompts.isCancel(result)) return Option.none<Value>()
+      return Option.some(result)
+    }),
   )
 
 export const spinner = () => {

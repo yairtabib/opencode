@@ -15,6 +15,7 @@ import {
   AccountID,
   AccountServiceError,
   Login,
+  Org,
   OrgID,
   PollDenied,
   PollError,
@@ -25,21 +26,7 @@ import {
   PollSuccess,
 } from "./schema"
 
-export {
-  AccessToken,
-  Account,
-  AccountID,
-  AccountServiceError,
-  Login,
-  OrgID,
-  PollDenied,
-  PollError,
-  PollExpired,
-  PollPending,
-  type PollResult,
-  PollSlow,
-  PollSuccess,
-} from "./schema"
+export * from "./schema"
 
 const RemoteOrg = Schema.Struct({
   id: Schema.optional(OrgID),
@@ -109,7 +96,7 @@ export class AccountService extends ServiceMap.Service<
     readonly list: () => Effect.Effect<Account[], AccountServiceError>
     readonly remove: (accountID: AccountID) => Effect.Effect<void, AccountServiceError>
     readonly use: (accountID: AccountID, orgID: Option.Option<OrgID>) => Effect.Effect<void, AccountServiceError>
-    readonly orgs: (accountID: AccountID) => Effect.Effect<{ id: string; name: string }[], AccountServiceError>
+    readonly orgs: (accountID: AccountID) => Effect.Effect<Org[], AccountServiceError>
     readonly config: (
       accountID: AccountID,
       orgID: OrgID,
@@ -218,7 +205,9 @@ export class AccountService extends ServiceMap.Service<
         const orgs = yield* HttpClientResponse.schemaBodyJson(RemoteOrgs)(ok.value).pipe(
           mapAccountServiceError("orgs", "Failed to decode response"),
         )
-        return orgs.map((org) => ({ id: org.id ?? "", name: org.name ?? "" }))
+        return orgs
+          .filter((org) => org.id !== undefined && org.name !== undefined)
+          .map((org) => new Org({ id: org.id!, name: org.name! }))
       })
 
       const config = Effect.fn("AccountService.config")(function* (accountID: AccountID, orgID: OrgID) {
@@ -259,22 +248,20 @@ export class AccountService extends ServiceMap.Service<
         const ok = yield* okOrNone("login", response)
         if (Option.isNone(ok)) {
           const body = yield* response.text.pipe(Effect.orElseSucceed(() => ""))
-          return yield* Effect.fail(
-            toAccountServiceError("login", `Failed to initiate device flow: ${body || response.status}`),
-          )
+          return yield* toAccountServiceError("login", `Failed to initiate device flow: ${body || response.status}`)
         }
 
         const parsed = yield* HttpClientResponse.schemaBodyJson(DeviceCode)(ok.value).pipe(
           mapAccountServiceError("login", "Failed to decode response"),
         )
-        return {
+        return new Login({
           code: parsed.device_code,
           user: parsed.user_code,
           url: `${server}${parsed.verification_uri_complete}`,
           server,
           expiry: parsed.expires_in,
           interval: parsed.interval,
-        }
+        })
       })
 
       const poll = Effect.fn("AccountService.poll")(function* (input: Login) {
@@ -374,5 +361,8 @@ export class AccountService extends ServiceMap.Service<
     }),
   )
 
-  static readonly defaultLayer = AccountService.layer.pipe(Layer.provide(AccountRepo.layer), Layer.provide(FetchHttpClient.layer))
+  static readonly defaultLayer = AccountService.layer.pipe(
+    Layer.provide(AccountRepo.layer),
+    Layer.provide(FetchHttpClient.layer),
+  )
 }
