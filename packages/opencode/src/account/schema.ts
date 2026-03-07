@@ -24,7 +24,7 @@ export class Account extends Schema.Class<Account>("Account")({
   id: AccountID,
   email: Schema.String,
   url: Schema.String,
-  org_id: Schema.NullOr(OrgID),
+  selected_org_id: Schema.NullOr(OrgID),
 }) {}
 
 export class Org extends Schema.Class<Org>("Org")({

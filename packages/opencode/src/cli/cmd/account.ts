@@ -83,7 +83,7 @@ const switchEffect = Effect.fn("switch")(function* () {
   if (groups.length === 0) return yield* println("Not logged in")
 
   const active = yield* service.active()
-  const activeOrgID = Option.flatMap(active, (a) => Option.fromNullishOr(a.org_id))
+  const activeOrgID = Option.flatMap(active, (a) => Option.fromNullishOr(a.selected_org_id))
 
   const opts = groups.flatMap((group) =>
     group.orgs.map((org) => {
@@ -116,7 +116,7 @@ const orgsEffect = Effect.fn("orgs")(function* () {
   if (!groups.some((group) => group.orgs.length > 0)) return yield* println("No orgs found")
 
   const active = yield* service.active()
-  const activeOrgID = Option.flatMap(active, (a) => Option.fromNullishOr(a.org_id))
+  const activeOrgID = Option.flatMap(active, (a) => Option.fromNullishOr(a.selected_org_id))
 
   for (const group of groups) {
     for (const org of group.orgs) {

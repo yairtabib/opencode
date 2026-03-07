@@ -33,7 +33,7 @@ test("ShareNext.request uses org share API with auth headers when account is act
     id: AccountID.make("account-1"),
     email: "user@example.com",
     url: "https://control.example.com",
-    org_id: OrgID.make("org-1"),
+    selected_org_id: OrgID.make("org-1"),
   }))
   Account.token = mock(async () => AccessToken.make("st_test_token"))
 
@@ -63,7 +63,7 @@ test("ShareNext.request fails when org account has no token", async () => {
     id: AccountID.make("account-1"),
     email: "user@example.com",
     url: "https://control.example.com",
-    org_id: OrgID.make("org-1"),
+    selected_org_id: OrgID.make("org-1"),
   }))
   Account.token = mock(async () => undefined)
 

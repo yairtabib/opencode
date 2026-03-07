@@ -253,7 +253,7 @@ test("resolves env templates in account config with account token", async () => 
     id: AccountID.make("account-1"),
     email: "user@example.com",
     url: "https://control.example.com",
-    org_id: OrgID.make("org-1"),
+    selected_org_id: OrgID.make("org-1"),
   }))
 
   Account.config = mock(async () => ({
