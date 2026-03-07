@@ -3,7 +3,7 @@ import { Effect, Layer, Option, Schema, ServiceMap } from "effect"
 
 import { Database } from "@/storage/db"
 import { AccountTable } from "./account.sql"
-import { Account, AccountID, AccountServiceError, OrgID } from "./schema"
+import { Account, AccountID, AccountRepoError, OrgID } from "./schema"
 
 export type AccountRow = (typeof AccountTable)["$inferSelect"]
 
@@ -11,10 +11,13 @@ const decodeAccount = Schema.decodeUnknownSync(Account)
 
 type DbClient = Parameters<typeof Database.use>[0] extends (db: infer T) => unknown ? T : never
 
+const toAccountRepoError = (operation: string, message: string, cause?: unknown) =>
+  new AccountRepoError({ operation, message, cause })
+
 const db = <A>(run: (db: DbClient) => A) =>
   Effect.try({
     try: () => Database.use(run),
-    catch: (cause) => new AccountServiceError({ operation: "db", message: "Database operation failed", cause }),
+    catch: (cause) => toAccountRepoError("db", "Database operation failed", cause),
   })
 
 const fromRow = (row: AccountRow) => decodeAccount(row)
@@ -22,17 +25,17 @@ const fromRow = (row: AccountRow) => decodeAccount(row)
 export class AccountRepo extends ServiceMap.Service<
   AccountRepo,
   {
-    readonly active: () => Effect.Effect<Option.Option<Account>, AccountServiceError>
-    readonly list: () => Effect.Effect<Account[], AccountServiceError>
-    readonly remove: (accountID: AccountID) => Effect.Effect<void, AccountServiceError>
-    readonly use: (accountID: AccountID, orgID: Option.Option<OrgID>) => Effect.Effect<void, AccountServiceError>
-    readonly getRow: (accountID: AccountID) => Effect.Effect<Option.Option<AccountRow>, AccountServiceError>
+    readonly active: () => Effect.Effect<Option.Option<Account>, AccountRepoError>
+    readonly list: () => Effect.Effect<Account[], AccountRepoError>
+    readonly remove: (accountID: AccountID) => Effect.Effect<void, AccountRepoError>
+    readonly use: (accountID: AccountID, orgID: Option.Option<OrgID>) => Effect.Effect<void, AccountRepoError>
+    readonly getRow: (accountID: AccountID) => Effect.Effect<Option.Option<AccountRow>, AccountRepoError>
     readonly persistToken: (input: {
       accountID: AccountID
       accessToken: string
       refreshToken: string
       expiry: Option.Option<number>
-    }) => Effect.Effect<void, AccountServiceError>
+    }) => Effect.Effect<void, AccountRepoError>
     readonly persistAccount: (input: {
       id: AccountID
       email: string
@@ -41,7 +44,7 @@ export class AccountRepo extends ServiceMap.Service<
       refreshToken: string
       expiry: number
       orgID: Option.Option<OrgID>
-    }) => Effect.Effect<void, AccountServiceError>
+    }) => Effect.Effect<void, AccountRepoError>
   }
 >()("@opencode/AccountRepo") {
   static readonly layer: Layer.Layer<AccountRepo> = Layer.succeed(
@@ -116,7 +119,7 @@ export class AccountRepo extends ServiceMap.Service<
                 })
                 .run()
             }),
-          catch: (cause) => new AccountServiceError({ operation: "db", message: "Database operation failed", cause }),
+          catch: (cause) => toAccountRepoError("db", "Database operation failed", cause),
         }).pipe(Effect.asVoid)
       }),
     }),

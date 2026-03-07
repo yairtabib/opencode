@@ -10,9 +10,11 @@ import {
 import { withTransientReadRetry } from "@/util/effect-http-client"
 import { AccountRepo, type AccountRow } from "./repo"
 import {
+  type AccountError,
   AccessToken,
   Account,
   AccountID,
+  AccountRepoError,
   AccountServiceError,
   Login,
   Org,
@@ -97,19 +99,19 @@ const mapAccountServiceError =
 export class AccountService extends ServiceMap.Service<
   AccountService,
   {
-    readonly active: () => Effect.Effect<Option.Option<Account>, AccountServiceError>
-    readonly list: () => Effect.Effect<Account[], AccountServiceError>
-    readonly orgsByAccount: () => Effect.Effect<AccountOrgs[], AccountServiceError>
-    readonly remove: (accountID: AccountID) => Effect.Effect<void, AccountServiceError>
-    readonly use: (accountID: AccountID, orgID: Option.Option<OrgID>) => Effect.Effect<void, AccountServiceError>
-    readonly orgs: (accountID: AccountID) => Effect.Effect<Org[], AccountServiceError>
+    readonly active: () => Effect.Effect<Option.Option<Account>, AccountError>
+    readonly list: () => Effect.Effect<Account[], AccountError>
+    readonly orgsByAccount: () => Effect.Effect<AccountOrgs[], AccountError>
+    readonly remove: (accountID: AccountID) => Effect.Effect<void, AccountError>
+    readonly use: (accountID: AccountID, orgID: Option.Option<OrgID>) => Effect.Effect<void, AccountError>
+    readonly orgs: (accountID: AccountID) => Effect.Effect<Org[], AccountError>
     readonly config: (
       accountID: AccountID,
       orgID: OrgID,
-    ) => Effect.Effect<Option.Option<Record<string, unknown>>, AccountServiceError>
-    readonly token: (accountID: AccountID) => Effect.Effect<Option.Option<AccessToken>, AccountServiceError>
-    readonly login: (url?: string) => Effect.Effect<Login, AccountServiceError>
-    readonly poll: (input: Login) => Effect.Effect<PollResult, AccountServiceError>
+    ) => Effect.Effect<Option.Option<Record<string, unknown>>, AccountError>
+    readonly token: (accountID: AccountID) => Effect.Effect<Option.Option<AccessToken>, AccountError>
+    readonly login: (url?: string) => Effect.Effect<Login, AccountError>
+    readonly poll: (input: Login) => Effect.Effect<PollResult, AccountError>
   }
 >()("@opencode/Account") {
   static readonly layer: Layer.Layer<AccountService, never, AccountRepo | HttpClient.HttpClient> = Layer.effect(

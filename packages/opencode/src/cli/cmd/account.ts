@@ -3,7 +3,7 @@ import { Duration, Effect, Match, Option } from "effect"
 import { UI } from "../ui"
 import { runtime } from "@/effect/runtime"
 import { AccountID, AccountService, OrgID, PollExpired, type PollResult } from "@/account/service"
-import { type AccountServiceError } from "@/account/schema"
+import { type AccountError } from "@/account/schema"
 import * as Prompt from "../effect/prompt"
 import open from "open"
 
@@ -24,7 +24,7 @@ const loginEffect = Effect.fn("login")(function* (url?: string) {
   const s = Prompt.spinner()
   yield* s.start("Waiting for authorization...")
 
-  const poll = (wait: number): Effect.Effect<PollResult, AccountServiceError> =>
+  const poll = (wait: number): Effect.Effect<PollResult, AccountError> =>
     Effect.gen(function* () {
       yield* Effect.sleep(wait)
       const result = yield* service.poll(login)
