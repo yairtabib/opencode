@@ -809,7 +809,7 @@ export type Session = {
   id: string
   slug: string
   projectID: string
-  orgID?: string
+  workspaceID?: string
   directory: string
   parentID?: string
   summary?: {
@@ -1673,7 +1673,7 @@ export type GlobalSession = {
   id: string
   slug: string
   projectID: string
-  orgID?: string
+  workspaceID?: string
   directory: string
   parentID?: string
   summary?: {

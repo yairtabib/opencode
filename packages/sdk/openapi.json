@@ -9079,7 +9079,7 @@
           "projectID": {
             "type": "string"
           },
-          "orgID": {
+          "workspaceID": {
             "type": "string"
           },
           "directory": {
@@ -11158,7 +11158,7 @@
           "projectID": {
             "type": "string"
           },
-          "orgID": {
+          "workspaceID": {
             "type": "string"
           },
           "directory": {

@@ -446,7 +446,7 @@
       "autoincrement": false,
       "default": null,
       "generated": null,
-      "name": "org_id",
+      "name": "workspace_id",
       "entityType": "columns",
       "table": "session"
     },
@@ -939,14 +939,14 @@
     {
       "columns": [
         {
-          "value": "org_id",
+          "value": "workspace_id",
           "isExpression": false
         }
       ],
       "isUnique": false,
       "where": null,
       "origin": "manual",
-      "name": "session_org_idx",
+      "name": "session_workspace_idx",
       "entityType": "indexes",
       "table": "session"
     },

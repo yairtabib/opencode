@@ -64,7 +64,7 @@ export namespace Session {
       id: row.id,
       slug: row.slug,
       projectID: row.project_id,
-      orgID: row.org_id ?? undefined,
+      workspaceID: row.workspace_id ?? undefined,
       directory: row.directory,
       parentID: row.parent_id ?? undefined,
       title: row.title,
@@ -86,7 +86,7 @@ export namespace Session {
     return {
       id: info.id,
       project_id: info.projectID,
-      org_id: info.orgID,
+      workspace_id: info.workspaceID,
       parent_id: info.parentID,
       slug: info.slug,
       directory: info.directory,
@@ -121,7 +121,7 @@ export namespace Session {
       id: Identifier.schema("session"),
       slug: z.string(),
       projectID: z.string(),
-      orgID: z.string().optional(),
+      workspaceID: z.string().optional(),
       directory: z.string(),
       parentID: Identifier.schema("session").optional(),
       summary: z
@@ -301,7 +301,7 @@ export namespace Session {
       version: Installation.VERSION,
       projectID: Instance.project.id,
       directory: input.directory,
-      orgID: WorkspaceContext.workspaceID,
+      workspaceID: WorkspaceContext.workspaceID,
       parentID: input.parentID,
       title: input.title ?? createDefaultTitle(!!input.parentID),
       permission: input.permission,
@@ -532,7 +532,7 @@ export namespace Session {
 
   export function* list(input?: {
     directory?: string
-    orgID?: string
+    workspaceID?: string
     roots?: boolean
     start?: number
     search?: string
@@ -542,7 +542,7 @@ export namespace Session {
     const conditions = [eq(SessionTable.project_id, project.id)]
 
     if (WorkspaceContext.workspaceID) {
-      conditions.push(eq(SessionTable.org_id, WorkspaceContext.workspaceID))
+      conditions.push(eq(SessionTable.workspace_id, WorkspaceContext.workspaceID))
     }
     if (input?.directory) {
       conditions.push(eq(SessionTable.directory, input.directory))
