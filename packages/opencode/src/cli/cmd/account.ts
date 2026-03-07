@@ -2,7 +2,7 @@ import { cmd } from "./cmd"
 import { Duration, Effect, Match, Option } from "effect"
 import { UI } from "../ui"
 import { runtime } from "@/effect/runtime"
-import { AccountService, OrgID, PollExpired, type PollResult } from "@/account/service"
+import { AccountID, AccountService, OrgID, PollExpired, type PollResult } from "@/account/service"
 import { type AccountServiceError } from "@/account/schema"
 import * as Prompt from "../effect/prompt"
 import open from "open"
@@ -70,44 +70,63 @@ const logoutEffect = Effect.fn("logout")(function* (email?: string) {
   yield* println("Logged out from " + active.value.email)
 })
 
+interface OrgChoice {
+  orgID: OrgID
+  accountID: AccountID
+  label: string
+}
+
 const switchEffect = Effect.fn("switch")(function* () {
   const service = yield* AccountService
 
-  const active = yield* service.active()
-  if (Option.isNone(active)) return yield* println("Not logged in")
+  const groups = yield* service.orgsByAccount()
+  if (groups.length === 0) return yield* println("Not logged in")
 
-  const orgs = yield* service.orgs(active.value.id)
-  if (orgs.length === 0) return yield* println("No orgs found")
+  const active = yield* service.active()
+  const activeOrgID = Option.flatMap(active, (a) => Option.fromNullishOr(a.org_id))
+
+  const opts = groups.flatMap((group) =>
+    group.orgs.map((org) => {
+      const isActive = Option.isSome(activeOrgID) && activeOrgID.value === org.id
+      return {
+        value: { orgID: org.id, accountID: group.account.id, label: org.name },
+        label: isActive
+          ? `${org.name} (${group.account.email})` + UI.Style.TEXT_DIM + " (active)"
+          : `${org.name} (${group.account.email})`,
+      }
+    }),
+  )
+  if (opts.length === 0) return yield* println("No orgs found")
 
   yield* Prompt.intro("Switch org")
 
-  const opts = orgs.map((o) => ({
-    value: o.id,
-    label: o.id === active.value.org_id ? o.name + UI.Style.TEXT_DIM + " (active)" : o.name,
-  }))
-
-  const selected = yield* Prompt.select<OrgID>({ message: "Select org", options: opts })
+  const selected = yield* Prompt.select<OrgChoice>({ message: "Select org", options: opts })
   if (Option.isNone(selected)) return
 
-  yield* service.use(active.value.id, Option.some(selected.value))
-  yield* Prompt.outro("Switched to " + orgs.find((o) => o.id === selected.value)?.name)
+  const choice = selected.value
+  yield* service.use(choice.accountID, Option.some(choice.orgID))
+  yield* Prompt.outro("Switched to " + choice.label)
 })
 
 const orgsEffect = Effect.fn("orgs")(function* () {
   const service = yield* AccountService
 
-  const accounts = yield* service.list()
-  if (accounts.length === 0) return yield* println("No accounts found")
+  const groups = yield* service.orgsByAccount()
+  if (groups.length === 0) return yield* println("No accounts found")
+  if (!groups.some((group) => group.orgs.length > 0)) return yield* println("No orgs found")
 
-  const allOrgs = yield* Effect.all(
-    accounts.map((account) =>
-      service.orgs(account.id).pipe(Effect.map((orgs) => orgs.map((org) => ({ org, account })))),
-    ),
-    { concurrency: "unbounded" },
-  )
+  const active = yield* service.active()
+  const activeOrgID = Option.flatMap(active, (a) => Option.fromNullishOr(a.org_id))
 
-  for (const { org, account } of allOrgs.flat()) {
-    yield* println([org.name, account.email, org.id].join("\t"))
+  for (const group of groups) {
+    for (const org of group.orgs) {
+      const isActive = Option.isSome(activeOrgID) && activeOrgID.value === org.id
+      const dot = isActive ? UI.Style.TEXT_SUCCESS + "●" + UI.Style.TEXT_NORMAL : " "
+      const name = isActive ? UI.Style.TEXT_HIGHLIGHT_BOLD + org.name + UI.Style.TEXT_NORMAL : org.name
+      const email = UI.Style.TEXT_DIM + group.account.email + UI.Style.TEXT_NORMAL
+      const id = UI.Style.TEXT_DIM + org.id + UI.Style.TEXT_NORMAL
+      yield* println(`  ${dot} ${name}  ${email}  ${id}`)
+    }
   }
 })
 
@@ -150,7 +169,6 @@ export const SwitchCommand = cmd({
 
 export const OrgsCommand = cmd({
   command: "orgs",
-  aliases: ["org"],
   describe: "list all orgs",
   async handler() {
     UI.empty()

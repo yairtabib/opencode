@@ -28,6 +28,11 @@ import {
 
 export * from "./schema"
 
+export type AccountOrgs = {
+  account: Account
+  orgs: Org[]
+}
+
 const RemoteOrg = Schema.Struct({
   id: Schema.optional(OrgID),
   name: Schema.optional(Schema.String),
@@ -94,6 +99,7 @@ export class AccountService extends ServiceMap.Service<
   {
     readonly active: () => Effect.Effect<Option.Option<Account>, AccountServiceError>
     readonly list: () => Effect.Effect<Account[], AccountServiceError>
+    readonly orgsByAccount: () => Effect.Effect<AccountOrgs[], AccountServiceError>
     readonly remove: (accountID: AccountID) => Effect.Effect<void, AccountServiceError>
     readonly use: (accountID: AccountID, orgID: Option.Option<OrgID>) => Effect.Effect<void, AccountServiceError>
     readonly orgs: (accountID: AccountID) => Effect.Effect<Org[], AccountServiceError>
@@ -184,6 +190,15 @@ export class AccountService extends ServiceMap.Service<
       const token = Effect.fn("AccountService.token")((accountID: AccountID) =>
         resolveAccess(accountID).pipe(Effect.map(Option.map((r) => r.accessToken))),
       )
+
+      const orgsByAccount = Effect.fn("AccountService.orgsByAccount")(function* () {
+        const accounts = yield* repo.list()
+        return yield* Effect.forEach(
+          accounts,
+          (account) => orgs(account.id).pipe(Effect.map((orgs) => ({ account, orgs }))),
+          { concurrency: "unbounded" },
+        )
+      })
 
       const orgs = Effect.fn("AccountService.orgs")(function* (accountID: AccountID) {
         const resolved = yield* resolveAccess(accountID)
@@ -350,6 +365,7 @@ export class AccountService extends ServiceMap.Service<
       return AccountService.of({
         active: repo.active,
         list: repo.list,
+        orgsByAccount,
         remove: repo.remove,
         use: repo.use,
         orgs,
