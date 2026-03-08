@@ -33,13 +33,11 @@ export class Org extends Schema.Class<Org>("Org")({
 }) {}
 
 export class AccountRepoError extends Schema.TaggedErrorClass<AccountRepoError>()("AccountRepoError", {
-  operation: Schema.String,
   message: Schema.String,
   cause: Schema.optional(Schema.Defect),
 }) {}
 
 export class AccountServiceError extends Schema.TaggedErrorClass<AccountServiceError>()("AccountServiceError", {
-  operation: Schema.String,
   message: Schema.String,
   cause: Schema.optional(Schema.Defect),
 }) {}

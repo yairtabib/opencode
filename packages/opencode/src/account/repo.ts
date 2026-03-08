@@ -11,13 +11,12 @@ const decodeAccount = Schema.decodeUnknownSync(Account)
 
 type DbClient = Parameters<typeof Database.use>[0] extends (db: infer T) => unknown ? T : never
 
-const toAccountRepoError = (operation: string, message: string, cause?: unknown) =>
-  new AccountRepoError({ operation, message, cause })
+const toAccountRepoError = (message: string, cause?: unknown) => new AccountRepoError({ message, cause })
 
 const db = <A>(run: (db: DbClient) => A) =>
   Effect.try({
     try: () => Database.use(run),
-    catch: (cause) => toAccountRepoError("db", "Database operation failed", cause),
+    catch: (cause) => toAccountRepoError("Database operation failed", cause),
   })
 
 const fromRow = (row: AccountRow) => decodeAccount(row)
@@ -143,7 +142,7 @@ export class AccountRepo extends ServiceMap.Service<
                 .run()
               setActive(tx, input.id)
             }),
-          catch: (cause) => toAccountRepoError("db", "Database operation failed", cause),
+          catch: (cause) => toAccountRepoError("Database operation failed", cause),
         }).pipe(Effect.asVoid)
       }),
     }),

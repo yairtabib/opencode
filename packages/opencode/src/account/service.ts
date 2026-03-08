@@ -84,15 +84,14 @@ const DeviceTokenRequest = Schema.Struct({
 const serverDefault = "https://web-14275-d60e67f5-pyqs0590.onporter.run"
 const clientId = "opencode-cli"
 
-const toAccountServiceError = (operation: string, message: string, cause?: unknown) =>
-  new AccountServiceError({ operation, message, cause })
+const toAccountServiceError = (message: string, cause?: unknown) => new AccountServiceError({ message, cause })
 
 const mapAccountServiceError =
   (operation: string, message = "Account service operation failed") =>
   <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, AccountServiceError, R> =>
     effect.pipe(
       Effect.mapError((error) =>
-        error instanceof AccountServiceError ? error : toAccountServiceError(operation, message, error),
+        error instanceof AccountServiceError ? error : toAccountServiceError(`${message} (${operation})`, error),
       ),
     )
 
@@ -265,7 +264,7 @@ export class AccountService extends ServiceMap.Service<
         const ok = yield* okOrNone("login", response)
         if (Option.isNone(ok)) {
           const body = yield* response.text.pipe(Effect.orElseSucceed(() => ""))
-          return yield* toAccountServiceError("login", `Failed to initiate device flow: ${body || response.status}`)
+          return yield* toAccountServiceError(`Failed to initiate device flow: ${body || response.status}`)
         }
 
         const parsed = yield* HttpClientResponse.schemaBodyJson(DeviceCode)(ok.value).pipe(
