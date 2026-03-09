@@ -34,7 +34,7 @@ jobs:
 
   build-tauri:
     needs: build-cli
-    runs-on: blacksmith-4vcpu-windows-2025
+    runs-on: windows-2025
     steps:
       - uses: actions/checkout@v4
         with:
@@ -69,58 +69,6 @@ jobs:
           RUST_TARGET: aarch64-pc-windows-msvc
           GH_TOKEN: ${{ github.token }}
           GITHUB_RUN_ID: ${{ github.run_id }}
-
-      - name: Install Windows ARM64 MSVC tools
-        shell: pwsh
-        run: |
-          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
-          if (!(Test-Path $vswhere)) { throw "vswhere.exe not found at $vswhere" }
-          $root = & $vswhere -latest -products * -property installationPath
-          if (!$root) { throw "Visual Studio installation not found" }
-          $setup = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\setup.exe"
-          if (!(Test-Path $setup)) { throw "setup.exe not found at $setup" }
-          & $setup modify --installPath "$root" --add Microsoft.VisualStudio.Component.VC.Tools.ARM64 --quiet --norestart
-          if ($LASTEXITCODE -ne 0) { throw "setup.exe exited with code $LASTEXITCODE" }
-
-      - name: Setup Windows ARM64 MSVC
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: amd64_arm64
-
-      - name: Setup Windows ARM64 clang
-        shell: pwsh
-        run: |
-          choco install llvm --yes --no-progress
-          $bin = @(
-            "C:\Program Files\LLVM\bin",
-            "C:\Program Files (x86)\LLVM\bin"
-          ) | Where-Object { Test-Path (Join-Path $_ "clang.exe") } | Select-Object -First 1
-          if (!$bin) {
-            $bin = Get-Command clang -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -ErrorAction SilentlyContinue | Split-Path
-          }
-          if (!$bin) { throw "clang.exe not found after installing llvm" }
-          $env:PATH = "$bin;$env:PATH"
-          Add-Content -Path $env:GITHUB_PATH -Value $bin
-          clang --version
-
-      - name: Force Windows ARM64 linker env
-        shell: pwsh
-        run: |
-          $sdk = $env:WindowsSDKVersion.TrimEnd("\\")
-          $ucrt = Join-Path $env:WindowsSdkDir "Lib\$sdk\ucrt\arm64"
-          $um = Join-Path $env:WindowsSdkDir "Lib\$sdk\um\arm64"
-          $msvc = Join-Path $env:VCToolsInstallDir "lib\arm64"
-          $bin = Join-Path $env:VCToolsInstallDir "bin\HostX64\arm64"
-          $kit = Join-Path $env:WindowsSdkDir "bin\$sdk\x64"
-          $link = Join-Path $bin "link.exe"
-          $miss = @($ucrt, $um, $msvc, $bin, $link) | Where-Object { !(Test-Path $_) }
-          if ($miss) { throw "missing ARM64 tool paths: $($miss -join ', ')" }
-          "LIB=$ucrt;$um;$msvc" | Add-Content -Path $env:GITHUB_ENV
-          "CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_LINKER=$link" | Add-Content -Path $env:GITHUB_ENV
-          Add-Content -Path $env:GITHUB_PATH -Value $bin
-          Add-Content -Path $env:GITHUB_PATH -Value $kit
-          Write-Host "Using linker: $link"
-          Write-Host "Using LIB: $ucrt;$um;$msvc"
 
       - name: Build and upload artifacts
         uses: tauri-apps/tauri-action@390cbe447412ced1303d35abe75287949e43437a
