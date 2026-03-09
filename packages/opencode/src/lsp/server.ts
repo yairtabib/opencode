@@ -12,6 +12,7 @@ import { Flag } from "../flag/flag"
 import { Archive } from "../util/archive"
 import { Process } from "../util/process"
 import { which } from "../util/which"
+import { Module } from "@opencode-ai/util/module"
 
 export namespace LSPServer {
   const log = Log.create({ service: "lsp.server" })
@@ -98,7 +99,7 @@ export namespace LSPServer {
     ),
     extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"],
     async spawn(root) {
-      const tsserver = await Bun.resolve("typescript/lib/tsserver.js", Instance.directory).catch(() => {})
+      const tsserver = Module.resolve("typescript/lib/tsserver.js", Instance.directory)
       log.info("typescript server", { tsserver })
       if (!tsserver) return
       const proc = spawn(BunProc.which(), ["x", "typescript-language-server", "--stdio"], {
@@ -173,7 +174,7 @@ export namespace LSPServer {
     root: NearestRoot(["package-lock.json", "bun.lockb", "bun.lock", "pnpm-lock.yaml", "yarn.lock"]),
     extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts", ".vue"],
     async spawn(root) {
-      const eslint = await Bun.resolve("eslint", Instance.directory).catch(() => {})
+      const eslint = Module.resolve("eslint", Instance.directory)
       if (!eslint) return
       log.info("spawning eslint server")
       const serverPath = path.join(Global.Path.bin, "vscode-eslint", "server", "out", "eslintServer.js")
@@ -341,7 +342,7 @@ export namespace LSPServer {
       let args = ["lsp-proxy", "--stdio"]
 
       if (!bin) {
-        const resolved = await Bun.resolve("biome", root).catch(() => undefined)
+        const resolved = Module.resolve("biome", root)
         if (!resolved) return
         bin = BunProc.which()
         args = ["x", "biome", "lsp-proxy", "--stdio"]
@@ -1084,7 +1085,7 @@ export namespace LSPServer {
     extensions: [".astro"],
     root: NearestRoot(["package-lock.json", "bun.lockb", "bun.lock", "pnpm-lock.yaml", "yarn.lock"]),
     async spawn(root) {
-      const tsserver = await Bun.resolve("typescript/lib/tsserver.js", Instance.directory).catch(() => {})
+      const tsserver = Module.resolve("typescript/lib/tsserver.js", Instance.directory)
       if (!tsserver) {
         log.info("typescript not found, required for Astro language server")
         return
