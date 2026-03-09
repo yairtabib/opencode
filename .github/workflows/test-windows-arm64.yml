@@ -103,6 +103,25 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value $bin
           clang --version
 
+      - name: Force Windows ARM64 linker env
+        shell: pwsh
+        run: |
+          $sdk = $env:WindowsSDKVersion.TrimEnd("\\")
+          $ucrt = Join-Path $env:WindowsSdkDir "Lib\$sdk\ucrt\arm64"
+          $um = Join-Path $env:WindowsSdkDir "Lib\$sdk\um\arm64"
+          $msvc = Join-Path $env:VCToolsInstallDir "lib\arm64"
+          $host = Join-Path $env:VCToolsInstallDir "bin\HostX64\arm64"
+          $kit = Join-Path $env:WindowsSdkDir "bin\$sdk\x64"
+          $link = Join-Path $host "link.exe"
+          $miss = @($ucrt, $um, $msvc, $host, $link) | Where-Object { !(Test-Path $_) }
+          if ($miss) { throw "missing ARM64 tool paths: $($miss -join ', ')" }
+          "LIB=$ucrt;$um;$msvc" | Add-Content -Path $env:GITHUB_ENV
+          "CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_LINKER=$link" | Add-Content -Path $env:GITHUB_ENV
+          Add-Content -Path $env:GITHUB_PATH -Value $host
+          Add-Content -Path $env:GITHUB_PATH -Value $kit
+          Write-Host "Using linker: $link"
+          Write-Host "Using LIB: $ucrt;$um;$msvc"
+
       - name: Build and upload artifacts
         uses: tauri-apps/tauri-action@390cbe447412ced1303d35abe75287949e43437a
         timeout-minutes: 60
