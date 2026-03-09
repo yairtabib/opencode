@@ -70,6 +70,30 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_RUN_ID: ${{ github.run_id }}
 
+      - name: Install Windows ARM64 MSVC tools
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          if (!(Test-Path $vswhere)) { throw "vswhere.exe not found at $vswhere" }
+          $root = & $vswhere -latest -products * -property installationPath
+          if (!$root) { throw "Visual Studio installation not found" }
+          $installer = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vs_installer.exe"
+          if (!(Test-Path $installer)) { throw "vs_installer.exe not found at $installer" }
+          $p = Start-Process -FilePath $installer -ArgumentList @(
+            "modify",
+            "--installPath", $root,
+            "--add", "Microsoft.VisualStudio.Component.VC.Tools.ARM64",
+            "--quiet",
+            "--norestart",
+            "--wait"
+          ) -Wait -PassThru -NoNewWindow
+          if ($p.ExitCode -ne 0) { throw "vs_installer.exe exited with code $($p.ExitCode)" }
+
+      - name: Setup Windows ARM64 MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64_arm64
+
       - name: Setup Windows ARM64 clang
         shell: pwsh
         run: |
