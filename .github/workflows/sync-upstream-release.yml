@@ -1,0 +1,60 @@
+name: Sync to latest upstream release
+
+on:
+  schedule:
+    # Run daily at 06:00 UTC
+    - cron: "0 6 * * *"
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add upstream remote
+        run: git remote add upstream https://github.com/anomalyco/opencode.git
+
+      - name: Fetch upstream tags
+        run: git fetch upstream --tags --force
+
+      - name: Find latest release tag
+        id: latest
+        run: |
+          LATEST_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.' | head -1)
+          echo "tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+          echo "Latest upstream release tag: $LATEST_TAG"
+
+      - name: Check if rebase needed
+        id: check
+        run: |
+          LATEST_TAG="${{ steps.latest.outputs.tag }}"
+          TAG_COMMIT=$(git rev-parse "$LATEST_TAG")
+          HEAD_COMMIT=$(git rev-parse HEAD)
+          if git merge-base --is-ancestor "$TAG_COMMIT" HEAD; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "Already up to date with $LATEST_TAG"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            echo "Rebase needed: HEAD=$HEAD_COMMIT, tag=$LATEST_TAG=$TAG_COMMIT"
+          fi
+
+      - name: Rebase onto latest tag
+        if: steps.check.outputs.needed == 'true'
+        run: |
+          LATEST_TAG="${{ steps.latest.outputs.tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git rebase "$LATEST_TAG"
+
+      - name: Force push
+        if: steps.check.outputs.needed == 'true'
+        run: git push origin main --force-with-lease
