@@ -79,14 +79,8 @@ jobs:
           if (!$root) { throw "Visual Studio installation not found" }
           $setup = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\setup.exe"
           if (!(Test-Path $setup)) { throw "setup.exe not found at $setup" }
-          $p = Start-Process -FilePath $setup -ArgumentList @(
-            "modify",
-            "--installPath", $root,
-            "--add", "Microsoft.VisualStudio.Component.VC.Tools.ARM64",
-            "--quiet",
-            "--norestart"
-          ) -Wait -PassThru -NoNewWindow
-          if ($p.ExitCode -ne 0) { throw "setup.exe exited with code $($p.ExitCode)" }
+          & $setup modify --installPath "$root" --add Microsoft.VisualStudio.Component.VC.Tools.ARM64 --quiet --norestart
+          if ($LASTEXITCODE -ne 0) { throw "setup.exe exited with code $LASTEXITCODE" }
 
       - name: Setup Windows ARM64 MSVC
         uses: ilammy/msvc-dev-cmd@v1
