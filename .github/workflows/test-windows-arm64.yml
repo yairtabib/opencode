@@ -17,7 +17,6 @@ permissions:
 jobs:
   build-cli:
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    if: github.repository == 'anomalyco/opencode'
     steps:
       - uses: actions/checkout@v4
 
@@ -36,7 +35,6 @@ jobs:
   build-tauri:
     needs: build-cli
     runs-on: blacksmith-4vcpu-windows-2025
-    if: github.repository == 'anomalyco/opencode'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,6 +51,14 @@ jobs:
         with:
           workspaces: packages/desktop/src-tauri
           shared-key: aarch64-pc-windows-msvc
+
+      - name: Create test config
+        shell: pwsh
+        run: |
+          $cfg = Get-Content "packages/desktop/src-tauri/tauri.prod.conf.json" -Raw | ConvertFrom-Json -AsHashtable
+          $cfg.bundle.createUpdaterArtifacts = $false
+          if ($cfg.plugins) { $cfg.plugins.Remove("updater") }
+          $cfg | ConvertTo-Json -Depth 100 | Set-Content "packages/desktop/src-tauri/tauri.test.conf.json"
 
       - name: Prepare
         run: |
@@ -90,17 +96,14 @@ jobs:
         with:
           projectPath: packages/desktop
           uploadWorkflowArtifacts: true
-          args: --target aarch64-pc-windows-msvc --config ./src-tauri/tauri.prod.conf.json --verbose
+          args: --target aarch64-pc-windows-msvc --config ./src-tauri/tauri.test.conf.json --verbose
           updaterJsonPreferNsis: true
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
   build-electron:
     needs: build-cli
     runs-on: blacksmith-4vcpu-windows-2025
-    if: github.repository == 'anomalyco/opencode'
     steps:
       - uses: actions/checkout@v4
 
