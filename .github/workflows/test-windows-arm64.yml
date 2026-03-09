@@ -1,0 +1,139 @@
+name: test-windows-arm64
+
+on:
+  push:
+    branches:
+      - feat/windows-arm64-support
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  build-cli:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    if: github.repository == 'anomalyco/opencode'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Build
+        run: ./packages/opencode/script/build.ts
+        env:
+          OPENCODE_VERSION: 0.0.0-windows-arm64-test
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencode-cli
+          path: packages/opencode/dist
+
+  build-tauri:
+    needs: build-cli
+    runs-on: blacksmith-4vcpu-windows-2025
+    if: github.repository == 'anomalyco/opencode'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-tags: true
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/desktop/src-tauri
+          shared-key: aarch64-pc-windows-msvc
+
+      - name: Prepare
+        run: |
+          cd packages/desktop
+          bun ./scripts/prepare.ts
+        env:
+          OPENCODE_VERSION: 0.0.0-windows-arm64-test
+          RUST_TARGET: aarch64-pc-windows-msvc
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+
+      - name: Setup Windows ARM64 clang
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          if (!(Test-Path $vswhere)) { throw "vswhere.exe not found at $vswhere" }
+          $root = & $vswhere -latest -products * -property installationPath
+          if (!$root) { throw "Visual Studio installation not found" }
+          $llvm = Join-Path $root "VC\Tools\Llvm"
+          $bin = @(
+            (Join-Path $llvm "x64\bin"),
+            (Join-Path $llvm "bin")
+          ) | Where-Object { Test-Path (Join-Path $_ "clang.exe") } | Select-Object -First 1
+          if (!$bin -and (Test-Path $llvm)) {
+            $bin = Get-ChildItem -Path $llvm -Filter clang.exe -Recurse -File | Select-Object -First 1 | ForEach-Object { $_.DirectoryName }
+          }
+          if (!$bin) { throw "clang.exe not found under $llvm" }
+          $env:PATH = "$bin;$env:PATH"
+          Add-Content -Path $env:GITHUB_PATH -Value $bin
+          clang --version
+
+      - name: Build and upload artifacts
+        uses: tauri-apps/tauri-action@390cbe447412ced1303d35abe75287949e43437a
+        timeout-minutes: 60
+        with:
+          projectPath: packages/desktop
+          uploadWorkflowArtifacts: true
+          args: --target aarch64-pc-windows-msvc --config ./src-tauri/tauri.prod.conf.json --verbose
+          updaterJsonPreferNsis: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+  build-electron:
+    needs: build-cli
+    runs-on: blacksmith-4vcpu-windows-2025
+    if: github.repository == 'anomalyco/opencode'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Prepare
+        run: bun ./scripts/prepare.ts
+        working-directory: packages/desktop-electron
+        env:
+          OPENCODE_VERSION: 0.0.0-windows-arm64-test
+          OPENCODE_CHANNEL: prod
+          RUST_TARGET: aarch64-pc-windows-msvc
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+
+      - name: Build
+        run: bun run build
+        working-directory: packages/desktop-electron
+        env:
+          OPENCODE_CHANNEL: prod
+
+      - name: Package
+        run: npx electron-builder --win --arm64 --publish never --config electron-builder.config.ts
+        working-directory: packages/desktop-electron
+        timeout-minutes: 60
+        env:
+          OPENCODE_CHANNEL: prod
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencode-electron-aarch64-pc-windows-msvc
+          path: packages/desktop-electron/dist/*
