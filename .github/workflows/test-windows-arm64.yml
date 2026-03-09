@@ -73,19 +73,15 @@ jobs:
       - name: Setup Windows ARM64 clang
         shell: pwsh
         run: |
-          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
-          if (!(Test-Path $vswhere)) { throw "vswhere.exe not found at $vswhere" }
-          $root = & $vswhere -latest -products * -property installationPath
-          if (!$root) { throw "Visual Studio installation not found" }
-          $llvm = Join-Path $root "VC\Tools\Llvm"
+          choco install llvm --yes --no-progress
           $bin = @(
-            (Join-Path $llvm "x64\bin"),
-            (Join-Path $llvm "bin")
+            "C:\Program Files\LLVM\bin",
+            "C:\Program Files (x86)\LLVM\bin"
           ) | Where-Object { Test-Path (Join-Path $_ "clang.exe") } | Select-Object -First 1
-          if (!$bin -and (Test-Path $llvm)) {
-            $bin = Get-ChildItem -Path $llvm -Filter clang.exe -Recurse -File | Select-Object -First 1 | ForEach-Object { $_.DirectoryName }
+          if (!$bin) {
+            $bin = Get-Command clang -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -ErrorAction SilentlyContinue | Split-Path
           }
-          if (!$bin) { throw "clang.exe not found under $llvm" }
+          if (!$bin) { throw "clang.exe not found after installing llvm" }
           $env:PATH = "$bin;$env:PATH"
           Add-Content -Path $env:GITHUB_PATH -Value $bin
           clang --version
