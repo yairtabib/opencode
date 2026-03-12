@@ -1,11 +1,62 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "provider": {
-    "opencode": {
-      "options": {},
-    },
+    "github-copilot": {
+      "options": {}
+    }
   },
-  "mcp": {},
+  "enabled_providers": ["github-copilot"],
+  "mcp": {
+    "context7": {
+      "type": "local",
+      "command": ["npx", "-y", "@upstash/context7-mcp"]
+    },
+    "mcp-atlassian": {
+      "type": "local",
+      "command": ["uvx", "mcp-atlassian"],
+      "environment": {
+        "JIRA_URL": "{env:JIRA_URL}",
+        "JIRA_USERNAME": "{env:JIRA_USERNAME}",
+        "JIRA_API_TOKEN": "{env:JIRA_API_TOKEN}",
+        "CONFLUENCE_URL": "{env:CONFLUENCE_URL}",
+        "CONFLUENCE_USERNAME": "{env:CONFLUENCE_USERNAME}",
+        "CONFLUENCE_API_TOKEN": "{env:CONFLUENCE_API_TOKEN}"
+      }
+    },
+    "koala-mcp": {
+      "type": "local",
+      "command": [
+        "uvx",
+        "--from", "git+ssh://git@github.com/yairtabib/koala-mcp.git",
+        "koala-mcp"
+      ],
+      "environment": {
+        "KOALA_API_URL": "{env:KOALA_API_URL}",
+        "KOALA_API_TOKEN": "{env:KOALA_API_TOKEN}"
+      }
+    },
+    "shell-mcp": {
+      "type": "local",
+      "command": [
+        "uvx",
+        "--from", "git+ssh://git@github.com/yairtabib/shell-mcp.git",
+        "shell-mcp"
+      ]
+    },
+    "jenkins-mcp": {
+      "type": "local",
+      "command": [
+        "uvx",
+        "--from", "git+ssh://git@github.com/yairtabib/jenkins-mcp.git",
+        "jenkins-mcp"
+      ],
+      "environment": {
+        "JENKINS_URL": "{env:JENKINS_URL}",
+        "JENKINS_USER_ID": "{env:JENKINS_USER_ID}",
+        "JENKINS_API_TOKEN": "{env:JENKINS_API_TOKEN}"
+      }
+    }
+  },
   "tools": {
     "github-triage": false,
     "github-pr-search": false,
